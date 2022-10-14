@@ -210,7 +210,7 @@ function runAnnealing!(
                     T = $(round(1/β, sigdigits = 4)), \
                     E = $(round(E/length(cfg), sigdigits = 4)), \
                     R = $(round(R, sigdigits = 4)), \
-                    σ = $(round(σ, sigdigits = 4)),
+                    σ = $(round(σ, sigdigits = 4)), \
                     accepted updates per site = $(round(accepted_updates/length(cfg), digits = 2)), \
                     sweeps = $sweep_at_T");flush(stdout)   
             break
