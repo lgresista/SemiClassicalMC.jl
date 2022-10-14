@@ -3,6 +3,26 @@ uuid = "c7ea8738-3587-42f3-ae5e-12f8a3b0b641"
 authors = ["Lasse Gresista <gresista@thp.uni-koeln.de> and contributors"]
 version = "0.1.0"
 
+[deps]
+BinningAnalysis = "b7192094-8e58-5052-a244-180a858778ee"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+LatPhysBandstructures = "72414950-169f-5300-802d-f5e080ac9554"
+LatPhysBase = "eec5c15a-e8bd-11e8-0d23-6799ca40c963"
+LatPhysLatticeConstruction = "ec4de012-e8d7-11e8-3fed-dfe576d3bbe4"
+LatPhysLatticeModification = "84ed28fe-f306-11e8-122d-2faba6147774"
+LatPhysLuttingerTisza = "91e24bd6-ff91-11e8-087a-05fe8a0f75ec"
+LatPhysReciprocal = "7a511e88-ebe4-11e8-1bac-67d16a536c98"
+LatPhysUnitcellLibrary = "9ab7acfc-e8ca-11e8-283d-b33250f7e765"
+LatticePhysics = "53011200-ee7a-11e8-39f1-5f3e57afe4fd"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Manifolds = "1cead3c2-87b3-11e9-0ccd-23c62b72b94e"
+Manopt = "0fc0a36d-df90-57f3-8f93-d78a9fc72bb5"
+PolygonInbounds = "e4521ec6-8c1d-418e-9da2-b3bc4ae105d6"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
 [compat]
 julia = "1"
 
