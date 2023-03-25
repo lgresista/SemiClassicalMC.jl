@@ -1,4 +1,7 @@
+
 ## IO using serialization
+
+#Checkpoint for finite T
 function checkpoint!(filename, cfg :: Configuration, obs :: Observables, sweep :: Int64, βs :: Vector{Float64}, energy :: Vector{Float64}, σ :: Float64)
     h5open(filename, "w") do file
         iobuffer = IOBuffer()
@@ -17,6 +20,7 @@ function checkpoint!(filename, cfg :: Configuration, obs :: Observables, sweep :
     return nothing
 end
 
+#read checkpoint
 function readCheckpoint(filename, :: Type{Obs}) :: Tuple{Configuration, Obs, Int64, Vector{Float64}, Vector{Float64}, Float64} where {Obs <: Observables}
     h5open(filename) do file
         cfg = deserialize(IOBuffer(read(file["cfg"])))
@@ -29,50 +33,111 @@ function readCheckpoint(filename, :: Type{Obs}) :: Tuple{Configuration, Obs, Int
     end
 end
 
-## Save result of minimization (last entry of observables)
-function saveResult!( 
-    filename :: String,
-    obs      :: Observables,
-    )        :: Nothing
-    h5open(filename, "cw") do f
-        res = create_group(f, "res")
-        for field in fieldnames(typeof(obs))
-            res[String(field)] = getfield(obs, field)[end]
-        end
+#Checkpoint for annealing
+function checkpoint!(filename, cfg :: Configuration, sweep :: Int64, βs :: Vector{Float64}, energy :: Vector{Float64}, σ :: Float64)
+    h5open(filename, "w") do file
+        iobuffer = IOBuffer()
+
+        serialize(iobuffer, cfg)
+        file["cfg"] = take!(iobuffer)
+        file["current_sweep"] = sweep
+        file["energy"] = energy
+        file["βs"] = βs
+        file["σ"] = σ
+    end
+    return nothing
+end
+
+#read checkpoint
+function readCheckpointSA(filename) :: Tuple{Configuration, Int64, Vector{Float64}, Vector{Float64}, Float64}
+    h5open(filename) do file
+        cfg = deserialize(IOBuffer(read(file["cfg"])))
+        current_sweep = read(file["current_sweep"])
+        energy = read(file["energy"])
+        βs = read(file["βs"])
+        σ = read(file["σ"])
+        return cfg, current_sweep, energy, βs, σ
     end
 end
 
+#Collect means for files with diferent temperatures
+function getmeans(
+    filename,  # function filename(T) = "path-to-file-for-temperature-T"
+    outfile,   # filename where means get stored
+    Ts         # Temperatures for which to calculate means
+)
+    #initialize mean dictionary
+    println("Initializing output"); flush(stdout)
+    means = Dict()
+    idxs = Dict()
+    f = h5open(filename(Ts[1]))["means"]
+    mkeys = keys(f)
+    for key in mkeys
+        s = size(f[key * "/mean"])
+        if length(s) > 1
+            t = typeof(read(f[key * "/mean"])).parameters[1]
+        else
+            t = typeof(read(f[key * "/mean"]))
+        end
 
-############### Helpfer functions to convert between vectors and arrays ###############
+        means[key * "/mean"] = zeros(t, s..., length(Ts))
+        means[key * "/error"] = zeros(t, s..., length(Ts))
+        idxs[key] = s
+    end
+    close(f)
 
-function vectorToMatrix(vector :: Vector{Vector{T}}) where T
-    ncol = length(vector[1])
-    nrow = length(vector)
-    return [vector[j][i] for i in 1:ncol, j in 1:nrow]
+    println("Collecting means for $(length(Ts)) temperatures, this may take a while..."); flush(stdout)
+    #collect means
+    for i in eachindex(Ts)
+        print("$i|"); flush(stdout)
+        try
+            h5open(filename(Ts[i])) do f
+                for key in mkeys
+                    key
+                    idx = CartesianIndices((idxs[key]..., i:i))
+                    means[key * "/mean"][idx] .= read(f["means/" * key * "/mean"])
+                    means[key * "/error"][idx] .= read(f["means/" * key * "/error"])
+                end
+            end
+        catch
+            println("ERROR: Could not load means from ", filename(Ts[i]));flush(stdout)
+        end
+    end
+    println("\nSaving means"); flush(stdout)
+    #save means to file
+    h5open(outfile, "w") do f
+        f["Ts"] = collect(Ts)
+        for key in keys(means)
+            f[key] = means[key]
+        end
+    end
+    println("Done")
 end
 
-function vectorToArray(vector :: Vector{Matrix{T}}) where T
-    n1, n2 = size(vector[1])
-    n3 = length(vector)
-    return [vector[k][i, j] for i in 1:n1, j in 1:n2, k in 1:n3]
-end
+#Get energy measurements (for histogram analysis) for multiple temperatures (usually around T_c)
+function getenergies(filename, outfile, Ts)
+    println("Collecting energies for $(length(Ts)) temperatures, this may take a while..."); flush(stdout)
 
-function arrayToMatrixVector(array :: Array{T, 3}) where T
-    return [array[:, :, k] for k in 1:size(array, 3)]
-end
-
-function vectorToArray(vector :: Vector{Vector{Vector{T}}}) where T
-    n1 = length(vector[1][1])
-    n2 = length(vector[1])
-    n3 = length(vector)
+    energies = Array{Vector{Float64}}(undef, length(Ts))
     
-    return [vector[j][i][h] for h in 1:n1, i in 1:n2, j in 1:n3]
-end
-
-function matrixToVector(matrix)
-    return [matrix[:, i] for i in 1:size(matrix, 2)]
-end
-
-function arrayToVector(array :: Array{T, 3}) where T
-    return [[array[:, i, j] for i in 1:size(array, 2)] for j in 1:size(array, 3)]
+    #collect means
+    for i in eachindex(Ts)
+        print("$i|"); flush(stdout)
+        try
+            h5open(filename(Ts[i])) do f
+                energies[i] = read(f["energy"])
+            end
+        catch
+            energies[i] = zeros(1)
+            println("ERROR: Could not load measurements from ", filename(Ts[j], labels[i]));flush(stdout)
+        end
+    end
+    println("\nSaving energies"); flush(stdout)
+    #save means to file
+    h5open(outfile, "w") do f
+        for i in eachindex(Ts)
+            f["$(Ts[i])"] = energies[i]
+        end    
+    end
+    println("Done")
 end

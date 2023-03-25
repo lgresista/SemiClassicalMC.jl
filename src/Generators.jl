@@ -1,21 +1,24 @@
+#Get generators for a filling of n partons
 function getGenerators(n :: Int64) :: Vector{Matrix{Complex{Float64}}}
     #fermionic basis
     basis = [digits(n; base = 2, pad = 4) for n in 0:15]
-    return [S(1,  0, n, basis),
-            S(2,  0, n, basis), 
-            S(3,  0, n, basis), 
-            S(0,  1, n, basis),
-            S(0,  2, n, basis),
-            S(0,  3, n, basis),
-            S(1,  1, n, basis),
-            S(1,  2, n, basis),
-            S(1,  3, n, basis),
-            S(2,  1, n, basis),
-            S(2,  2, n, basis),
-            S(2,  3, n, basis),
-            S(3,  1, n, basis),
-            S(3,  2, n, basis),
-            S(3,  3, n, basis)]
+
+    #Return S(μ, ν, n, basis) = σ^μ ⊗ τ^ν at filling n
+    return [S(1,  0, n, basis), #1 
+            S(2,  0, n, basis), #2
+            S(3,  0, n, basis), #3
+            S(0,  1, n, basis), #4
+            S(0,  2, n, basis), #5
+            S(0,  3, n, basis), #6
+            S(1,  1, n, basis), #7
+            S(1,  2, n, basis), #8
+            S(1,  3, n, basis), #9
+            S(2,  1, n, basis), #10
+            S(2,  2, n, basis), #11
+            S(2,  3, n, basis), #12
+            S(3,  1, n, basis), #13
+            S(3,  2, n, basis), #14
+            S(3,  3, n, basis)] #15
 end
 
 #Choosen bassis: Occupation of 
