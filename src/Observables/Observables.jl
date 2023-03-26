@@ -80,15 +80,15 @@ function getPrefactors(v :: Vector{<:Number},
     return round.((A \ b), digits = 5)
 end
 
-#Get allowed momenta in box around the origin in range (-kx_lim, kx_lim) x (-ky_lim, ky_lim)
-function getKsInBox(lattice, L; kx_lim = 2π, ky_lim = 2π)
+#Get allowed momenta in box around "center" with side lenghts given by dimensions
+function getKsInBox(lattice, L, dimensions, center)
     uc = getUnitcell(Symbol(lattice))
     uc.lattice_vectors .*= L
     ruc = getReciprocalUnitcell(uc)
-    rl = getLatticeInBox(ruc, [2 * kx_lim, 2 * ky_lim], zeros(length(ruc.lattice_vectors[1])))
+    rl = getLatticeInBox(ruc, dimensions, center)
     ks = [site.point for site in rl.sites]
     return ks
-end 
+end
 
 #Compute structure factor as fouriertransform of sum over components of spin-spin correlations
 function computeStructureFactor(correlation, rs, ks; components = eachindex(correlation[:, 1]))
