@@ -1,81 +1,93 @@
 abstract type Observables end
 
 #Include different types of observables
-include("Observables_generic.jl")
-include("Observables_tg_hbn.jl")
+include("ObservablesGeneric.jl")
+include("ObservablesTgHbn.jl")
 
 
-#Initialization of observables based on type and configuration
+#Type-stable initialization of observables based on type and configuration
 function initializeObservables(obstype :: Type{T}, cfg :: Configuration) :: T where T <: Observables
     obstype(cfg)
 end
 
-# Some relevant observables
+## Some model-independent observables
+
+#Magnetization over all sites (outputs vector (<T^1>, <T^2>, ...)) for each generator T^i
 function getMagnetization(cfg :: Configuration) :: Vector{Float64}
     return dropdims(sum(getSpinExpectation(cfg), dims = 2)/length(cfg), dims = 2)
 end
 
-function getSublatticeMagnetization(cfg :: Configuration) :: Matrix{Float64}
-    labels = sort(unique(cfg.siteLabels))
-    m      = zeros(15, length(labels))
 
-    for (i, label) in enumerate(labels)
-        spins = [getSpinExpectation(cfg, j) for j in 1:length(cfg) if getSiteLabel(cfg, j) == label]
-        m[:, i] = sum(spins)/length(spins)
-    end
-
-    return m
-end
-
-function getCorrelations(cfg :: Configuration)
+#Calculate diagonal all-to-all correlations <T^\mu_i><T^\mu_j>, adding all contributions with the same r_i-r_j
+function getCorrelations(cfg :: Configuration, project :: Matrix{Int64})
     Ts = getSpinExpectation(cfg)  
-    
-    
+
     correlations = zeros(size(Ts, 1), length(getBasis(cfg)) * length(cfg))
 
     for i in 1:length(cfg)
         for j in 1:length(cfg)
-            correlations[:, cfg.project[i,j]] += Ts[:, i] .* Ts[:, j]
+            correlations[:, project[i,j]] += Ts[:, i] .* Ts[:, j]
         end
     end
     
     return correlations
 end
 
-#Scalar chirality in z-direction
-function getChirality(cfg :: Configuration, components :: AbstractArray) :: Float64
-    κ = 0.0
+#Return all possible "r_i - r_j" between sites in the lattice (with periodic boundary conditions)
+function getRs(cfg :: Configuration) :: Vector{Vector{Float64}}
+    return vcat([cfg.positions .- Ref(cfg.positions[1] .+ b) for b in cfg.basis]...)    
+end
+
+#Returns matrix m mapping sites i, j so that r_i - r_j = rs[m[i,j]]
+function getProject(cfg :: Configuration) :: Matrix{Int64}
+
+    rs = getRs(cfg)
+    
+    project = zeros(Int64, length(cfg), length(cfg))
+
     for i in 1:length(cfg)
-        #Get left and right pointing triangle from site i 
-        i2, i3, i4, i5 = getInteractionSites(cfg, i)[[1, 5, 4, 2]]
-        
-        #Get corresponding spins
-        s1 = getSpinExpectation(cfg, i)[components]
-        s2 = getSpinExpectation(cfg, i2)[components]
-        s3 = getSpinExpectation(cfg, i3)[components]
-        s4 = getSpinExpectation(cfg, i4)[components]
-        s5 = getSpinExpectation(cfg, i5)[components]
-
-        #compute staggered spin chirality in z direction
-        κ += getChirality(s1, s2, s3) - getChirality(s1, s4, s5)
-    end
-    return κ/length(cfg)/2
-end
-
-function getChirality(v1 :: Vector{Float64}, v2 :: Vector{Float64}, v3 :: Vector{Float64}) :: Float64
-    return 2/3/sqrt(3) * (v1 × v2 + v2 × v3 + v3 × v1)[3]
-end
-
-function getCollinearity(cfg :: Configuration, components :: AbstractArray) :: Float64
-    P = 0.0
-    N = length(cfg)
-    for i in 1:N
-        for j in i:N
-            P += (dot(getSpinExpectation(cfg, i)[components], getSpinExpectation(cfg, j)[components]))^2
+        for j in 1:length(cfg)
+            r = periodicDistance(i, j, cfg)
+            project[i, j] = findfirst(isapprox.(Ref(r), rs; atol = 1e-10))
         end
     end
-    N_reduced = N/2 * (N+1)
-    return 3/2 * (P/N_reduced - 1/3)
+    return project
+end
+
+#Project connecting vector r_i - r_j onto actual lattice sites (besite basis shifts)
+function periodicDistance(i :: Int64, j :: Int64, cfg :: Configuration) :: Vector{Float64}
+    #Seperate into connecting bravais and basis vector
+    db = cfg.basis[cfg.basisLabels[i]] .- cfg.basis[cfg.basisLabels[j]] 
+    r = cfg.positions[i] - cfg.positions[j] .- db
+    
+    #Decompose r = n[1] * unitVectors[1] + n[2] * unitVectors[2]...
+    ns = getPrefactors(r, cfg.unitVectors)
+
+    #Fold back onto lattice
+    for i in eachindex(ns)
+        ns[i] = ((ns[i] % cfg.L) + cfg.L) % cfg.L
+    end
+
+    #Add basis difference in the end
+    return sum(ns .* cfg.unitVectors) .+ db
+end
+
+#Decompose vector v in basis
+function getPrefactors(v :: Vector{<:Number}, 
+    basis :: Vector{<:Vector{<:Number}})
+    A  = [dot(e1, e2) for e1 in basis, e2 in basis]
+    b  = [dot(e, v) for e in basis]
+    return round.((A \ b), digits = 5)
+end
+
+#Get allowed momenta in box around "center" with side lenghts given by dimensions
+function getKsInBox(lattice, L, dimensions, center)
+    uc = getUnitcell(Symbol(lattice))
+    uc.lattice_vectors .*= L
+    ruc = getReciprocalUnitcell(uc)
+    rl = getLatticeInBox(ruc, dimensions, center)
+    ks = [site.point for site in rl.sites]
+    return ks
 end
 
 #Compute structure factor as fouriertransform of sum over components of spin-spin correlations
@@ -108,64 +120,9 @@ function computeStructureFactorVec(correlation, rs, ks)
     return sf
 end
 
-## Momentumspace helper functions
-# fold back momentum to first Brillouin zone for given reciprocal lattice vectors
-function fold_back!(
-    k  :: Vector{Float64},
-    k1 :: Vector{Float64},
-    k2 :: Vector{Float64}
-    )  :: Nothing
-
-    fold    = true
-    shifted = deepcopy(k)
-
-    while fold
-        fold = false
-
-        for n1 in -1 : 1
-            for n2 in -1 : 1
-                @. shifted  = k - n1 * k1 - n2 * k2
-                abs_shifted = norm(shifted)
-                abs_k       = norm(k)
-
-                if abs_shifted < abs_k
-                    if abs(abs_shifted - abs_k) > 1e-8
-                        k    .= shifted
-                        fold  = true 
-                    end
-                end
-            end
-        end
-    end
-
-    return nothing
+#Helper function to convert vector of vectors to matrix
+function vectorToMatrix(vector :: Vector{Vector{T}}) where T
+    ncol = length(vector[1])
+    nrow = length(vector)
+    return [vector[j][i] for i in 1:ncol, j in 1:nrow]
 end
-
-
-function getKsInBox(latticename, L; kx_lim = 2π, ky_lim = 2π)
-    uc = getUnitcell(Symbol(latticename))
-    uc.lattice_vectors .*= L
-    ruc = getReciprocalUnitcell(uc)
-    rl = getLatticeInBox(ruc, [2 * kx_lim, 2 * ky_lim], zeros(length(ruc.lattice_vectors[1])))
-    ks = [site.point for site in rl.sites]
-    return ks
-end 
-
-function getKsInBZ(lattice, L)
-    uc = getUnitcell(:triangular)
-    bz = getBrillouinZone(getReciprocalUnitcell(uc))
-    corners = bz.corners
-    sort!(corners, by = c -> atan(c[1], c[2]))
-
-    lims = maximum(norm.(corners))
-    ks = getKsInBox(lattice, L, kx_lim = lims, ky_lim = lims)
-    
-    nodes = [corners[i][j] for i in 1:length(corners), j in 1:length(corners[1])]
-    edges = vcat([[i i+1] for i in 1:length(corners)-1]..., [length(corners) 1])
-    verts = [ks[i][j] for i in 1:length(ks), j in 1:length(ks[1])]
-    
-    inbz = inpoly2(verts, nodes, edges)
-    mask = [inbz[i, 1] || inbz[i, 2] for i in 1:length(ks)]
-    return ks[mask]
-end
-

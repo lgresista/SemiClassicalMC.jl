@@ -1,22 +1,21 @@
 ## Different Monte Carlo techniques applicable to general configurations
-
 # Fixed T (with simulated annealing for thermalization)
 function run!(
-    cfg              :: Configuration, #Configuration (contains model and initial conditions)
-    obs              :: Observables,   #Observables (contains all observables to be measured)
-    T                :: Number,        #Temperature
-    T_i              :: Number,        #Temperature to start annealing from for thermalization
-    N_therm          :: Int,           #Number of thermalization sweeps
-    N_measure        :: Int,           #Number of measurement sweeps
-    filename         :: String;        #Where the data is saved
-    measurement_rate :: Int = 10,      #Frequency of measurements (in sweeps)
-    checkpoint_rate  :: Int = 100000,  #Frequency of creating checkpoints (in sweeps)
-    report_rate      :: Int = 100,     #Frequency of printing status information
-    current_sweep    :: Int = 0,       #Sweep the cfg is at (for starting from checkpoints)
-    energy           :: Vector{Float64} = Float64[], # (for checkpoints)
-    βs               :: Vector{Float64} = Float64[], # (for checkpoints)
-    σ                :: Float64 = 60.0, #initial "cone width" for local update (is automatically tuned while thermalizing)
-    seed             :: Int = abs(rand(Random.RandomDevice(),Int)) #seed for RNG 
+    cfg              :: Configuration,
+    obs              :: Observables,
+    T                :: Number,
+    T_i              :: Number,
+    N_therm          :: Int,
+    N_measure        :: Int,
+    filename         :: String;
+    measurement_rate :: Int = 10,
+    checkpoint_rate  :: Int = 100000,
+    report_rate      :: Int = 100,
+    current_sweep    :: Int = 0,
+    energy           :: Vector{Float64} = Float64[],
+    βs               :: Vector{Float64} = Float64[],
+    σ                :: Float64 = 60.0,
+    seed             :: Int = abs(rand(Random.RandomDevice(),Int)),
     )                :: Nothing
 
     #Reseeding RNG
@@ -64,8 +63,8 @@ function run!(
         end
 
         if sweep % report_rate == 0
-            T = round(1/β, sigdigits = 4)
-            println("$filename: $sweep/$N_therm thermalization sweeps. T = $T, R = $(round(R, sigdigits = 4)), σ = $(round(σ, sigdigits = 4)).")        
+            T_round = round(1/β, sigdigits = 4)
+            println("$filename: $sweep/$N_therm thermalization sweeps. T = $(T_round), R = $(round(R, sigdigits = 4)), σ = $(round(σ, sigdigits = 4)).")        
         end
 
     end
@@ -112,33 +111,33 @@ function run!(
     return nothing
 end
 
+
 # Simulated annealing
 function runAnnealing!(
-    cfg              :: Configuration,  #Configuration (contains model and initial conditions)
-    obs              :: Observables,    #Observables (contains all observables to be measured)
-    T_i              :: Number,         #Initial temperature
-    filename         :: String;         #output file
-    T_fac            :: Number = 0.98,  #The temperature gets updates as T_new = T * T_fac
-    N_max            :: Int = 10000000, #Maximal number of annealing sweeps
-    N_o              :: Int = 0,        #Number of optimization sweeps (stochastic gradient descent)
-    N_per_T          :: Int = 10000,    #Maximal number of sweeps per temperature
-    min_acc_per_site :: Int = 100,      #Minimal accepted updates per site per temperature
-    min_accrate      :: Number = 1e-5,  #Acceptance rate after with annealing is stopped
-    measurement_rate :: Int = 1000,     #Rate at which measurements are taking (in sweeps)
-    checkpoint_rate  :: Int = 100000,   #Rate at which checkpoints are created (in sweeps)
-    σ_min            :: Float64 = 0.05, #Minimal cone width (which is reduced adaptively until this value)
-    seed             :: Int = abs(rand(Random.RandomDevice(),Int)), #seed for RNG
-    verbose          :: Bool = false,   #More output from minimizer
-    βs               :: Vector{Float64} = Float64[], #for checkpointing
-    energy           :: Vector{Float64} = Float64[], #for checkpointing
-    current_sweep    :: Int64 = 1,      #for checkpointing
-    σ                :: Float64 = 60.0  #Initial conewidth
+    cfg              :: Configuration,
+    T_i              :: Number,
+    filename         :: String;
+    T_fac            :: Number = 0.98,
+    N_max            :: Int = 10000000,
+    N_o              :: Int = 0,
+    N_per_T          :: Int = 10000,
+    min_acc_per_site :: Int = 100,
+    min_accrate      :: Number = 1e-5,
+    checkpoint_rate  :: Int = 100000,
+    σ_min            :: Float64 = 0.05,
+    seed             :: Int = abs(rand(Random.RandomDevice(),Int)),
+    verbose          :: Bool = false,
+    βs               :: Vector{Float64} = Float64[],
+    energy           :: Vector{Float64} = Float64[],
+    current_sweep    :: Int64 = 1,
+    σ                :: Float64 = 60.0
     )                :: Nothing
     
     #Reseed RNG 
     Random.seed!(seed)
 
     E = getEnergy(cfg)
+    
     #Initialize beta
     β = isempty(βs) ? 1/T_i : βs[end]
     β_fac = 1/T_fac
@@ -166,11 +165,6 @@ function runAnnealing!(
 
             push!(energy, E/length(cfg))
             push!(βs, β)
-            
-            if sweep % measurement_rate == 0
-                measure!(obs, cfg, E, β, sweep)
-                #println(β, " ", accepted_updates/attempted_updates)
-            end 
 
             if sweep % checkpoint_rate == 0
                 R_cp = round(accepted_updates/attempted_updates, sigdigits = 4)
@@ -179,7 +173,7 @@ function runAnnealing!(
                 E = $(round(E/length(cfg), sigdigits = 4)), \
                 R = $(round(R_cp, sigdigits = 4)), \
                 σ = $(round(σ, sigdigits = 4))"); flush(stdout)
-                checkpoint!(filename, cfg, obs, sweep, βs, energy, σ)
+                checkpoint!(filename, cfg, sweep, βs, energy, σ)
             end
             sweep_at_T +=1
             sweep +=1
@@ -210,7 +204,7 @@ function runAnnealing!(
                     T = $(round(1/β, sigdigits = 4)), \
                     E = $(round(E/length(cfg), sigdigits = 4)), \
                     R = $(round(R, sigdigits = 4)), \
-                    σ = $(round(σ, sigdigits = 4)), \
+                    σ = $(round(σ, sigdigits = 4)),
                     accepted updates per site = $(round(accepted_updates/length(cfg), digits = 2)), \
                     sweeps = $sweep_at_T");flush(stdout)   
             break
@@ -230,12 +224,6 @@ function runAnnealing!(
             i = rand(1:length(cfg))
             E = localOptimization!(cfg, E, i)
         end
-        
-        if sweep % measurement_rate == 0
-            measure!(obs, cfg, E, β, sweep)
-        end 
-        
-        checkpoint!(filename, cfg, obs, sweep, βs, energy, σ)
 
         push!(energy, E/length(cfg))
         push!(βs, β)
@@ -247,47 +235,61 @@ function runAnnealing!(
     println("$filename: Finished optimization sweeps")
     println("$filename: Saving observables"); flush(stdout)
 
-    measure!(obs, cfg, E, β, sweep)    
-    checkpoint!(filename, cfg, obs, sweep, βs, energy, σ)
-    saveResult!(filename, obs)
+    checkpoint!(filename, cfg, sweep, βs, energy, σ)
+
+    h5open(filename, "cw") do f
+        f["state"] = cfg.state
+    end
 
     println("$filename: Finished calculation."); flush(stdout)
     return nothing
 end
 
-#### Update functions ####
+
+
+## updates
 
 # Normalized complex vector of dimension d sampled uniformly 
 function getRandomState(d :: Int64) :: Vector{Complex{Float64}}
     return normalize(randn(Complex{Float64}, d))
 end
 
-# Noramlized complex vector with "cone width" σ around the old state
-function getRandomState(state :: Vector{Complex{Float64}}, σ :: Float64) :: Vector{Complex{Float64}}
+function getRandomState(state :: AbstractVector{Complex{Float64}}, σ :: Float64) :: Vector{Complex{Float64}}
     return normalize(state .+ σ .* randn(Complex{Float64}, length(state)))
 end
 
-# Local MC update
+function getRandomState!(newState :: AbstractVector{Complex{Float64}}, state :: AbstractVector{Complex{Float64}}, σ :: Float64) :: Nothing
+    newState .= (state .+ σ .* randn(Complex{Float64}, length(state)))
+    normalize!(newState)
+    return nothing
+end
+
 function localUpdate!(cfg :: Configuration, E :: Float64, accepted_updates :: Int64, β :: Float64, i :: Int64, σ :: Float64) :: Tuple{Float64, Int64}
+    
+    #Generate new state (stored in cfg.newState)
     state = getState(cfg, i)
-    newState = getRandomState(state, σ)
-    newT = computeSpinExpectation(newState, getGenerators(cfg))
-    newTsq = computeSpinExpectation(newState, getGeneratorsSq(cfg))
-    dE = getEnergyDifference(cfg, i, newT, newTsq)
+    getRandomState!(cfg.newState, state, σ)
+
+    #Calculate <T_i> and <T_i^2> and store in cfg.newT and cfg.newTsq
+    computeSpinExpectation!(cfg.newT, cfg.newState, getGenerators(cfg))
+    computeSpinExpectation!(cfg.newTsq, cfg.newState, getGeneratorsSq(cfg))
+
+    #Calculate energy difference
+    dE = getEnergyDifference!(cfg, i)
     
+    #Metropolis update
     p = exp(-β*dE)
-    
     if rand() < p
-        cfg.state[:, i] .= newState
-        cfg.spinExpectation[:, i] .= newT
-        cfg.spinSqExpectation[:, i] .= newTsq
+        cfg.state[:, i] .= cfg.newState
+        @turbo cfg.spinExpectation[:, i] .= cfg.newT
+        @turbo cfg.spinSqExpectation[:, i] .= cfg.newTsq
         E += dE
         accepted_updates += 1
     end
     return E, accepted_updates
 end
 
-# Local optimization by minimizing iteratively on each site.
+
 function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: Float64
 
     M = Sphere(2*cfg.d-1)
@@ -301,7 +303,7 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
 
     F(realstate) = F(M, realstate)
 
-    r_backend = Manifolds.TangentDiffBackend(Manifolds.FiniteDifferencesBackend())
+    r_backend = ManifoldDiff.TangentDiffBackend(ManifoldDiff.FiniteDifferencesBackend()) 
 
     gradF(M, state) = Manifolds.gradient(M, F, state, r_backend)
 
@@ -311,7 +313,7 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
             gradF,
             complexToReal(getState(cfg, i))
             ;
-            stepsize=ArmijoLinesearch(1.0, ExponentialRetraction(), 0.99, 0.5),
+            stepsize=ArmijoLinesearch(initial_stepsize = 1.0, retraction_method = ExponentialRetraction(), contraction_factor = 0.99, sufficient_decrease = 0.5),
             stopping_criterion = (StopWhenAny(StopAfterIteration(200),StopWhenGradientNormLess(1e-3))),
             #debug=[
             #    :Iteration,

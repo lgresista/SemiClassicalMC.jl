@@ -1,104 +1,104 @@
+# Configuration type
 struct Configuration
-    latticename         :: String                            # e.g. "triangular"
-    L                   :: Int64                             # linear extent (in unitcells)
-    nSites              :: Int64                             # number of sites
-    unitVectors         :: Vector{Vector{Float64}}           # unit vectors of unitcell
-    basis               :: Vector{Vector{Float64}}           # Basis sites in unit cell
-    project             :: Matrix{Int64}                     # Matrix, so that r(i)-r(j)=getRs(position, basis)[projet[i, j]] (for efficient calculation of correlations)
-    positions           :: Vector{Vector{Float64}}           # positions of each site
-    siteLabels          :: Vector{Int64}                     # optional site label (for the calculation of sublattice magnetizations)
-    interactionSites    :: Vector{Vector{Int64}}             # interactionSites[i] is a vector containing the indices of each site that interacts with site i
-    interactionLabels   :: Vector{Vector{Int64}}             # interactionLabels[i] is a vector containing the index of the type of interaction (in interactions)
-    interactions        :: Vector{Interaction}               # Stores different types of interactions (nn, nnn, bond depent)
-    onsiteInteraction   :: DiagInteraction                   # Onsite interaction (only diagonal to stay Hermitian)
-    d                   :: Int64                             # Dimension of local Hilbert space
-    generators          :: Vector{Matrix{Complex{Float64}}}  # Basis of generators T of su(4) in matrix form (dxd matrices)
-    generatorsSq        :: Vector{Matrix{Complex{Float64}}}  # Square of generators T² (for onsite interaction)
-    state               :: Matrix{Complex{Float64}}          # state[:, i] contains local state at site i (complex vector of size d)
-    spinExpectation     :: Matrix{Float64}                   # spinExpectation[:, i] constaints <Ψᵢ|T|Ψᵢ> for current state
-    spinSqExpectation   :: Matrix{Float64}                   # spinSqExpectation[:, i] constaints <Ψᵢ|T²|Ψᵢ> for current state
+    latticename         :: String                           # e.g. "triangular"
+    L                   :: Int64                            # linear extent (in unitcells)
+    nSites              :: Int64                            # number of sites
+    unitVectors         :: Vector{Vector{Float64}}          # bravais Vectors
+    basis               :: Vector{Vector{Float64}}          # basis vectors
+    positions           :: Vector{Vector{Float64}}          # positions of each site
+    basisLabels         :: Vector{Int64}                    # basis sublattice label of each site
+    interactionSites    :: Vector{Vector{Int64}}            # interactionSites[i] is a vector containing the indices of each site that interacts with site i
+    interactionLabels   :: Vector{Vector{Int64}}            # interactionLabels[i] is a vector containing the index of the type of interaction (in interactions)
+    interactions        :: Vector{Interaction}              # Stores different types of interactions (nn, nnn, bond depent)
+    onsiteInteraction   :: DiagInteraction                  # Onsite interaction (only diagonal to stay Hermitian)
+    d                   :: Int64                            # Dimension of local Hilbert space
+    generators          :: Vector{Matrix{Complex{Float64}}} # Basis of generators T of su(4) in matrix form (dxd matrices)
+    generatorsSq        :: Vector{Matrix{Complex{Float64}}} # Square of generators T² (for onsite interaction)
+    state               :: Matrix{Complex{Float64}}         # state[:, i] contains local state at site i (complex vector of size d)
+    spinExpectation     :: Matrix{Float64}                  # spinExpectation[:, i] constaints <Ψᵢ|T|Ψᵢ> for current state
+    spinSqExpectation   :: Matrix{Float64}                  # spinSqExpectation[:, i] constaints <Ψᵢ|T²|Ψᵢ> for current state
+    dT                  :: Vector{Float64}                  # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
+    newT                :: Vector{Float64}                  # Buffer to hold <T_i_new>
+    newTsq              :: Vector{Float64}                  # Buffer to hold <T_i_new T_i_new>
+    newState            :: Vector{Complex{Float64}}         # Buffer to hold potential new local state
 end
 
-#Initialization only with necesarry parameters
+#Initialization from unitcell generated with LatticePhysics
 function Configuration( 
-    latticename        :: String,
-    L                  :: Int64,
-    unitVectors        :: Vector{Vector{Float64}},
-    basis              :: Vector{Vector{Float64}},
-    positions          :: Vector{Vector{Float64}},
-    siteLabels         :: Vector{Int64},
-    interactionSites   :: Vector{Vector{Int64}},
-    interactionLabels  :: Vector{Vector{Int64}},
-    interactions       :: Vector{Interaction},
-    onsiteInteraction  :: DiagInteraction,
-    generators         :: Vector{Matrix{Complex{Float64}}},
-    state              :: Matrix{Complex{Float64}}
-)                      :: Configuration
+    latticename          :: String,                    #Lattice name
+    L                    :: Int64,                     #Linear lattice size
+    uc                   :: Unitcell{Site{Int64, D}, Bond{Int64, D}} where D, #Unitcell generated with LatticePhysics
+    interactions         :: Vector{Interaction},       #Vector containing different interactions associated to bond labels in uc
+    onsiteInteraction    :: DiagInteraction,           #Onsite interactions
+    n                    :: Int64                      #Partons per site (n = 1 -> fundamental or n = 2 -> self-conjugate);
+    )                    :: Configuration
 
-    nSites = length(positions)
-    d = size(state, 1)
-    project = getProject(positions, L, unitVectors, basis)
+    #Generate lattice
+    l = getLatticePeriodic(uc, L)
+    nSites = length(l.sites)
+
+    unitVectors = l.unitcell.lattice_vectors
+    basis = point.(uc.sites)
+    positions = point.(l.sites)
+    basisLabels = label.(l.sites)
+
+    #Read of interactions from bonds
+    orgBonds = organizedBondsFrom(l)
+    interactionSites = [to.(bond) for bond in orgBonds]
+    interactionLabels = [label.(bond) for bond in orgBonds]
+
+    #Generators dependent on filling
+    generators = getGenerators(n)
     generatorsSq = generators .^2
+
+    #dimension of local Hilbertspace
+    d = length(generators[1][:, 1])
+
+    #Generate random initial state
+    state = hcat([getRandomState(d) for _ in 1:length(positions)]...)
+
+    #Calculate initial spin expectations 
     spinExpectation = hcat([computeSpinExpectation(state[:, i], generators) for i in 1:nSites]...)
     spinSqExpectation =  hcat([computeSpinExpectation(state[:, i], generatorsSq) for i in 1:nSites]...)
-
-    Configuration(latticename, L, nSites, unitVectors, basis, project, positions, siteLabels, interactionSites,
+    
+    #Initialize buffers
+    dT = zeros(Float64, length(generators))
+    newT = zeros(Float64, length(generators))
+    newTsq = zeros(Float64, length(generators))
+    newState = zeros(Complex{Float64}, d)
+    
+    Configuration(latticename, L, nSites, unitVectors, basis, positions, basisLabels, interactionSites,
                   interactionLabels, interactions, onsiteInteraction, d, generators, generatorsSq, 
-                  state, spinExpectation, spinSqExpectation)
+                  state, spinExpectation, spinSqExpectation, dT, newT, newTsq, newState)
 end
 
-#### Get functions ###
-
-@inline function getLatticename(cfg :: Configuration) :: String
-    return cfg.latticename
-end
-
-@inline function getL(cfg :: Configuration) :: Int64
-    return cfg.l
-end
-
-@inline function Base.length(cfg :: Configuration) :: Int64
+##Get functions (using views for slices of arrays)
+function Base.length(cfg :: Configuration) :: Int64
     return cfg.nSites
 end
 
-@inline function getUnitVectors(cfg :: Configuration) :: Vector{Vector{Float64}}
-    return cfg.unitVectors
+@inline function getPosition(cfg :: Configuration, i :: Int) :: Vector{Float64}
+    return cfg.positions[i]
 end
 
 @inline function getBasis(cfg :: Configuration) :: Vector{Vector{Float64}}
     return cfg.basis
 end
 
-@inline function getProject(cfg :: Configuration) :: Matrix{Int64}
-    return cfg.project
-end
-
-@inline function getPosition(cfg :: Configuration, i :: Int64) :: Vector{Float64}
-    return cfg.positions[i]
-end
-
-@inline function getSiteLabel(cfg :: Configuration, i :: Int64) :: Int64
-    return cfg.siteLabels[i]
-end
-
-@inline function getInteractionSites(cfg :: Configuration, i :: Int64) :: Vector{Int64}
+@inline function getInteractionSites(cfg :: Configuration, i :: Int) :: Vector{Int64}
     return cfg.interactionSites[i]
 end
 
-@inline function getInteractionLabels(cfg :: Configuration, i :: Int64) :: Vector{Int64}
+@inline function getInteractionLabels(cfg :: Configuration, i :: Int) :: Vector{Int64}
     return cfg.interactionLabels[i]
 end
 
-@inline function getInteraction(cfg :: Configuration, label:: Int64) :: Interaction
+@inline function getInteraction(cfg :: Configuration, label :: Int) :: Interaction
     return cfg.interactions[label]
 end
 
 @inline function getOnsiteInteraction(cfg :: Configuration) :: DiagInteraction
     return cfg.onsiteInteraction
-end
-
-@inline function getD(cfg :: Configuration) :: Int64
-    return cfg.d
 end
 
 @inline function getGenerators(cfg :: Configuration) :: Vector{Matrix{Complex{Float64}}}
@@ -109,27 +109,41 @@ end
     return cfg.generatorsSq
 end
 
-@inline function getState(cfg :: Configuration, i :: Int64) :: Vector{Complex{Float64}}
-    return cfg.state[:, i]
+@inline function getState(cfg :: Configuration, i :: Int64) :: SubArray{ComplexF64, 1, Matrix{ComplexF64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
+    return view(cfg.state, :, i)
+end
+
+@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
+    return view(cfg.spinExpectation, :, i)
+end
+
+@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
+    return view(cfg.spinSqExpectation, :, i)
 end
 
 @inline function getSpinExpectation(cfg :: Configuration) :: Matrix{Float64}
     return cfg.spinExpectation
 end
 
-@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: Vector{Float64}
-    return cfg.spinExpectation[:, i]
+@inline function getSpinSqExpectation(cfg :: Configuration) :: Matrix{Float64}
+    return cfg.spinSqExpectation
 end
 
-@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: Vector{Float64}
-    return cfg.spinSqExpectation[:, i]
-end
 
-#### Energy and energy difference
-function computeSpinExpectation(state :: Vector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Vector{Float64}
+#Compute spin expectation given a state and generators
+function computeSpinExpectation(state :: AbstractVector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Vector{Float64}
     return [real(dot(state, generators[mu], state)) for mu in 1:length(generators)]
 end
 
+#Compute spin expectation in-place without allocations
+function computeSpinExpectation!(newT, state :: AbstractVector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Nothing
+    @inbounds for i in eachindex(newT)
+        newT[i] = real(dot(state, generators[i], state))
+    end
+    return nothing
+end
+
+#Get full energy of lattice
 function getEnergy(cfg :: Configuration) :: Float64
     E = 0.0
     for i in 1:length(cfg)
@@ -149,6 +163,7 @@ function getEnergy(cfg :: Configuration) :: Float64
     return E
 end
 
+#Get energy difference for new spin expectation newT, and newTSq
 function getEnergyDifference(cfg :: Configuration, i :: Int64, newT :: Vector{Float64}, newTsq :: Vector{Float64}) :: Float64
     dE = 0.0
     #Onsite Interaction
@@ -160,113 +175,35 @@ function getEnergyDifference(cfg :: Configuration, i :: Int64, newT :: Vector{Fl
     T = getSpinExpectation(cfg, i)
     interactionSites  = getInteractionSites(cfg, i)
     interactionLabels = getInteractionLabels(cfg, i)
-    dT = newT .- T
+    @turbo cfg.dT .= newT .- T
 
     for j in eachindex(interactionSites)
         T_j = getSpinExpectation(cfg, interactionSites[j])
         M = getInteraction(cfg, interactionLabels[j])
-        dE += exchangeEnergy(dT, M, T_j)
+        dE += exchangeEnergy(cfg.dT, M, T_j)
     end
     return dE
 end
 
-#Different site labels
-function getSiteLabels(
-    l           :: Lattice{S,B,U},
-    latticename :: String
-    )           :: Vector{Int64} where {D,N,LB,U,S<:AbstractSite{Int64,D},B<:AbstractBond{LB,N}}
-    if latticename == "triangular"
-        return getSiteLabelsTriangular(l)
-    else
-        return ones(Int64, length(l.sites))
+#Get energy difference for new spin expectation newT, and newTSq, in-place
+function getEnergyDifference!(cfg :: Configuration, i :: Int64) :: Float64
+    dE = 0.0
+    #Onsite Interaction
+    Tsq = getSpinSqExpectation(cfg, i)
+    dE += onsiteEnergy(cfg.newTsq, getOnsiteInteraction(cfg)) - 
+          onsiteEnergy(Tsq, getOnsiteInteraction(cfg))
+
+    #Exchange Interaction
+    T = getSpinExpectation(cfg, i)
+    @turbo cfg.dT .= cfg.newT .- T
+
+    interactionSites  = getInteractionSites(cfg, i)
+    interactionLabels = getInteractionLabels(cfg, i)
+
+    for j in eachindex(interactionSites)
+        T_j = getSpinExpectation(cfg, interactionSites[j])
+        M = getInteraction(cfg, interactionLabels[j])
+        dE += exchangeEnergy(cfg.dT, M, T_j)
     end
-end
-
-function getSiteLabelsTriangular(l :: Lattice{S,B,U}
-    ) :: Vector{Float64} where {D,N,LB,U,S<:AbstractSite{Int64,D},B<:AbstractBond{LB,N}}
-    lattice_vectors = normalize.(l.lattice_vectors)
-    
-    basis = [lattice_vectors[1] + lattice_vectors[2], 2*lattice_vectors[2] - lattice_vectors[1]]
-    siteLabels = zeros(length(l.sites))
-
-    for i in 1:length(l.sites)
-        v1 = point(site(l, i))
-        v2 = v1 + lattice_vectors[1]
-
-        sol1 = getPrefactors(v1, basis)
-        sol2 = getPrefactors(v2, basis)
-
-        if sol1 .% 1 == [0.0, 0.0]
-            siteLabels[i] = 1
-        elseif sol2 .% 1 == [0.0, 0.0]
-            siteLabels[i] = 2
-        else
-            siteLabels[i] = 3
-        end
-    end
-    return siteLabels
-end
-
-# Functions to get project matrix (for efficient all-to-all correlation storage)
-function getPrefactors(v :: Vector{<:Number}, 
-    basis :: Vector{<:Vector{<:Number}})
-    A  = [dot(e1, e2) for e1 in basis, e2 in basis]
-    b  = [dot(e, v) for e in basis]
-    return round.((A \ b), digits = 2)
-end
-
-#Return all possible "distances" between sites in the lattice
-function getRs(positions :: Vector{Vector{Float64}}, basis :: Vector{Vector{Float64}}) :: Vector{Vector{Float64}}
-    rs = vcat([positions .- Ref(positions[1] .+ b) for b in basis]...)    
-end
-
-function getProject(
-    positions   :: Vector{Vector{Float64}}, 
-    L           :: Int, 
-    unitVectors :: Vector{Vector{Float64}}, 
-    basis       :: Vector{Vector{Float64}}
-    )           :: Matrix{Int64}
-
-    rs = getRs(positions, basis)
-    
-    project = zeros(Int64, length(positions), length(positions))
-
-    for i in 1:length(positions)
-        for j in 1:length(positions)
-            r = periodicDistance(positions[i] .- positions[j], unitVectors, basis, L)
-            project[i, j] = findfirst(isapprox.(Ref(r), rs; atol = 1e-10))
-        end
-    end
-    return project
-end
-
-function periodicDistance(
-    r           :: Vector{Float64}, 
-    unitVectors :: Vector{Vector{Float64}},
-    basis       :: Vector{Vector{Float64}}, 
-    L           :: Int
-    ) :: Vector{Float64}
-    
-    bs = [basis[i] - basis[j] for i in eachindex(basis) for j in eachindex(basis) if i!=j]
-    bs = [[0.0, 0.0]; bs]
-    
-    for b in bs
-        
-        ns = getPrefactors(r .- b, unitVectors)
-  
-        isint = true
-        for n in ns
-            if isinteger(n) == false
-                isint = false
-                break
-            end
-        end
-        if isint == true
-            for i in eachindex(ns)
-                ns[i] = ((ns[i] %L) + L) %L
-            end
-            return b .+ sum(ns .* unitVectors)
-        end
-    end
-    @error "r does not seem to lie on lattice"
+    return dE
 end
