@@ -7,7 +7,7 @@ function initializeCfg(
         n           :: Int
         )           :: Configuration
         
-    if model == "nearest-neighbour"
+    if model == "nearest-neighbor"
         initializeCfgNN(J, latticename, L, n)
     elseif model == "tg-hbn"
         initializeCfgTgHbn(J, L; n = n)
