@@ -9,17 +9,17 @@ struct Configuration
     basisLabels         :: Vector{Int64}                    # basis sublattice label of each site
     interactionSites    :: Vector{Vector{Int64}}            # interactionSites[i] is a vector containing the indices of each site that interacts with site i
     interactionLabels   :: Vector{Vector{Int64}}            # interactionLabels[i] is a vector containing the index of the type of interaction (in interactions)
-    interactions        :: Vector{Interaction}              # Stores different types of interactions (nn, nnn, bond depent)
-    onsiteInteraction   :: DiagInteraction                  # Onsite interaction (only diagonal to stay Hermitian)
+    interactions        :: Vector{SMatrix{16, 16, Float64, 256}} # Stores different types of interactions (nn, nnn, bond depent)
+    onsiteInteraction   :: SVector{16, Float64}             # Onsite interaction (only diagonal to stay Hermitian)
     d                   :: Int64                            # Dimension of local Hilbert space
     generators          :: Vector{Matrix{Complex{Float64}}} # Basis of generators T of su(4) in matrix form (dxd matrices)
     generatorsSq        :: Vector{Matrix{Complex{Float64}}} # Square of generators T² (for onsite interaction)
-    state               :: Matrix{Complex{Float64}}         # state[:, i] contains local state at site i (complex vector of size d)
-    spinExpectation     :: Matrix{Float64}                  # spinExpectation[:, i] constaints <Ψᵢ|T|Ψᵢ> for current state
-    spinSqExpectation   :: Matrix{Float64}                  # spinSqExpectation[:, i] constaints <Ψᵢ|T²|Ψᵢ> for current state
-    dT                  :: Vector{Float64}                  # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
-    newT                :: Vector{Float64}                  # Buffer to hold <T_i_new>
-    newTsq              :: Vector{Float64}                  # Buffer to hold <T_i_new T_i_new>
+    state               :: Vector{Vector{Complex{Float64}}} # state[:, i] contains local state at site i (complex vector of size d)
+    spinExpectation     :: Vector{MVector{16, Float64}}     # spinExpectation[i] constaints <Ψᵢ|T|Ψᵢ> for current state
+    spinSqExpectation   :: Vector{MVector{16, Float64}}     # spinSqExpectation[i] constaints <Ψᵢ|T²|Ψᵢ> for current state
+    dT                  :: MVector{16, Float64}             # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
+    newT                :: MVector{16, Float64}             # Buffer to hold <T_i_new>
+    newTsq              :: MVector{16, Float64}             # Buffer to hold <T_i_new T_i_new>
     newState            :: Vector{Complex{Float64}}         # Buffer to hold potential new local state
 end
 
@@ -28,9 +28,9 @@ function Configuration(
     latticename          :: String,                    #Lattice name
     L                    :: Int64,                     #Linear lattice size
     uc                   :: Unitcell{Site{Int64, D}, Bond{Int64, D}} where D, #Unitcell generated with LatticePhysics
-    interactions         :: Vector{Interaction},       #Vector containing different interactions associated to bond labels in uc
-    onsiteInteraction    :: DiagInteraction,           #Onsite interactions
-    n                    :: Int64                      #Partons per site (n = 1 -> fundamental or n = 2 -> self-conjugate);
+    interactions         :: Vector{Matrix{Float64}},       #Vector containing different interactions associated to bond labels in uc
+    onsiteInteraction    :: Vector{Float64},      #Onsite interactions
+    n                    :: Int64                      #Partons per site (n = 1 -> fundamental or n = 2 -> self-conjugate representation);
     )                    :: Configuration
 
     #Generate lattice
@@ -55,11 +55,11 @@ function Configuration(
     d = length(generators[1][:, 1])
 
     #Generate random initial state
-    state = hcat([getRandomState(d) for _ in 1:length(positions)]...)
+    state = [getRandomState(d) for _ in 1:length(positions)]
 
     #Calculate initial spin expectations 
-    spinExpectation = hcat([computeSpinExpectation(state[:, i], generators) for i in 1:nSites]...)
-    spinSqExpectation =  hcat([computeSpinExpectation(state[:, i], generatorsSq) for i in 1:nSites]...)
+    spinExpectation = [computeSpinExpectation(state[i], generators) for i in 1:nSites]
+    spinSqExpectation = [computeSpinExpectation(state[i], generatorsSq) for i in 1:nSites]
     
     #Initialize buffers
     dT = zeros(Float64, length(generators))
@@ -93,11 +93,11 @@ end
     return cfg.interactionLabels[i]
 end
 
-@inline function getInteraction(cfg :: Configuration, label :: Int) :: Interaction
+@inline function getInteraction(cfg :: Configuration, label :: Int) :: SMatrix{16, 16, Float64, 256}
     return cfg.interactions[label]
 end
 
-@inline function getOnsiteInteraction(cfg :: Configuration) :: DiagInteraction
+@inline function getOnsiteInteraction(cfg :: Configuration) :: SVector{16, Float64}
     return cfg.onsiteInteraction
 end
 
@@ -109,26 +109,25 @@ end
     return cfg.generatorsSq
 end
 
-@inline function getState(cfg :: Configuration, i :: Int64) :: SubArray{ComplexF64, 1, Matrix{ComplexF64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
-    return view(cfg.state, :, i)
+@inline function getState(cfg :: Configuration, i :: Int64) :: Vector{ComplexF64}
+    return cfg.state[i]
 end
 
-@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
-    return view(cfg.spinExpectation, :, i)
+@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: MVector{16, Float64}
+    return cfg.spinExpectation[i]
 end
 
-@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}
-    return view(cfg.spinSqExpectation, :, i)
+@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: MVector{16, Float64}
+    return cfg.spinSqExpectation[i]
 end
 
-@inline function getSpinExpectation(cfg :: Configuration) :: Matrix{Float64}
+@inline function getSpinExpectation(cfg :: Configuration) :: Vector{MVector{16, Float64}} 
     return cfg.spinExpectation
 end
 
-@inline function getSpinSqExpectation(cfg :: Configuration) :: Matrix{Float64}
+@inline function getSpinSqExpectation(cfg :: Configuration) :: Vector{MVector{16, Float64}} 
     return cfg.spinSqExpectation
 end
-
 
 #Compute spin expectation given a state and generators
 function computeSpinExpectation(state :: AbstractVector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Vector{Float64}
@@ -141,6 +140,39 @@ function computeSpinExpectation!(newT, state :: AbstractVector{Complex{Float64}}
         newT[i] = real(dot(state, generators[i], state))
     end
     return nothing
+end
+
+#Calculate exchange energy
+function exchangeEnergy(
+    T_i :: AbstractVector,
+    M  :: AbstractMatrix,
+    T_j :: AbstractVector
+    )  :: Float64
+
+    val = 0.0
+
+    @turbo for k in eachindex(T_i) 
+        for l in eachindex(T_j)
+            val += T_i[k] * M[k, l] * T_j[l]
+        end 
+    end 
+
+    return val 
+end
+
+#Calculate onsite energy
+function onsiteEnergy(
+    Tsq :: AbstractVector,
+    M   :: AbstractVector
+    )   :: Float64
+
+    val = 0.0
+
+    @turbo for k in eachindex(Tsq)
+        val += Tsq[k] * M[k]
+    end
+
+    return val
 end
 
 #Get full energy of lattice

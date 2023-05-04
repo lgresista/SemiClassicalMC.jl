@@ -141,3 +141,10 @@ function getenergies(filename, outfile, Ts)
     end
     println("Done")
 end
+
+#Helper function to convert vector of vectors to matrix
+function vectorToMatrix(vector :: Vector{Vector{T}}) :: Matrix{T} where T
+    ncol = length(vector[1])
+    nrow = length(vector)
+    return [vector[j][i] for i in 1:ncol, j in 1:nrow]
+end

@@ -238,7 +238,7 @@ function runAnnealing!(
     checkpoint!(filename, cfg, sweep, βs, energy, σ)
 
     h5open(filename, "cw") do f
-        f["state"] = cfg.state
+        f["state"] = vectorToMatrix(cfg.state)
     end
 
     println("$filename: Finished calculation."); flush(stdout)
@@ -280,9 +280,9 @@ function localUpdate!(cfg :: Configuration, E :: Float64, accepted_updates :: In
     #Metropolis update
     p = exp(-β*dE)
     if rand() < p
-        cfg.state[:, i] .= cfg.newState
-        @turbo cfg.spinExpectation[:, i] .= cfg.newT
-        @turbo cfg.spinSqExpectation[:, i] .= cfg.newTsq
+        cfg.state[i] .= cfg.newState
+        @turbo cfg.spinExpectation[i] .= cfg.newT
+        @turbo cfg.spinSqExpectation[i] .= cfg.newTsq
         E += dE
         accepted_updates += 1
     end
@@ -325,9 +325,9 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
             )
     E += F(S, res)
     newState = realToComplex(res)
-    cfg.state[:, i] = newState
-    cfg.spinExpectation[:, i] = computeSpinExpectation(newState, getGenerators(cfg))
-    cfg.spinSqExpectation[:, i] = computeSpinExpectation(newState, getGeneratorsSq(cfg))
+    cfg.state[i] .= newState
+    cfg.spinExpectation[i] .= computeSpinExpectation(newState, getGenerators(cfg))
+    cfg.spinSqExpectation[i] .= computeSpinExpectation(newState, getGeneratorsSq(cfg))
     return E
 end
 

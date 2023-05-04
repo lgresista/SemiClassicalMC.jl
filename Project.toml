@@ -22,6 +22,7 @@ Manifolds = "1cead3c2-87b3-11e9-0ccd-23c62b72b94e"
 Manopt = "0fc0a36d-df90-57f3-8f93-d78a9fc72bb5"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
