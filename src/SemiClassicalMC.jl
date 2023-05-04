@@ -11,22 +11,13 @@ module SemiClassicalMC
         using Manifolds
         using FiniteDifferences
         using ManifoldDiff
+        using StaticArrays
 
 
         include("Generators.jl")
         export  getGenerators,
-                expval
-
-        include("InteractionMatrix.jl")
-
-        include("Interaction.jl")
-        export  Interaction,
-                getZeroInteraction,
-                unpack,
-                exchangeEnergy,
-                DiagInteraction,
-                getZeroDiagInteraction,
-                onsiteEnergy
+                expval,
+                get_su4index
 
         include("Configuration.jl")
         export  Configuration,
@@ -46,6 +37,8 @@ module SemiClassicalMC
                 getSpinSqExpectation,
                 computeSpinExpectation,
                 computeSpinExpectation!,
+                exchangeEnergy,
+                onsiteEnergy,
                 getEnergy,
                 getEnergyDifference,
                 getEnergyDifference!

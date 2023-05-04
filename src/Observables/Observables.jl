@@ -14,19 +14,19 @@ end
 
 #Magnetization over all sites (outputs vector (<T^1>, <T^2>, ...)) for each generator T^i
 function getMagnetization(cfg :: Configuration) :: Vector{Float64}
-    return dropdims(sum(getSpinExpectation(cfg), dims = 2)/length(cfg), dims = 2)
+    return sum(getSpinExpectation(cfg))/length(cfg)
 end
 
 
 #Calculate diagonal all-to-all correlations <T^\mu_i><T^\mu_j>, adding all contributions with the same r_i-r_j
 function getCorrelations(cfg :: Configuration, project :: Matrix{Int64})
-    Ts = getSpinExpectation(cfg)  
+    Ts = getSpinExpectation(cfg)
 
-    correlations = zeros(size(Ts, 1), length(getBasis(cfg)) * length(cfg))
+    correlations = zeros(length(Ts[1]), length(getBasis(cfg)) * length(cfg))
 
     for i in 1:length(cfg)
         for j in 1:length(cfg)
-            correlations[:, project[i,j]] += Ts[:, i] .* Ts[:, j]
+            correlations[:, project[i,j]] += Ts[i] .* Ts[j]
         end
     end
     
@@ -54,7 +54,7 @@ function getProject(cfg :: Configuration) :: Matrix{Int64}
     return project
 end
 
-#Project connecting vector r_i - r_j onto actual lattice sites (besite basis shifts)
+#Project connecting vector r_i - r_j onto actual lattice sites (beside basis shifts)
 function periodicDistance(i :: Int64, j :: Int64, cfg :: Configuration) :: Vector{Float64}
     #Seperate into connecting bravais and basis vector
     db = cfg.basis[cfg.basisLabels[i]] .- cfg.basis[cfg.basisLabels[j]] 
@@ -91,7 +91,7 @@ function getKsInBox(lattice, L, dimensions, center)
 end
 
 #Compute structure factor as fouriertransform of sum over components of spin-spin correlations
-function computeStructureFactor(correlation, rs, ks; components = eachindex(correlation[:, 1]))
+function computeStructureFactor(correlation, rs, ks; components = eachindex(correlation[2:end, 1]))
     sf = zeros(length(ks))
     for k in eachindex(ks)
         z = 0.0
@@ -118,11 +118,4 @@ function computeStructureFactorVec(correlation, rs, ks)
         sf[:, k] .= z ./ length(rs)
     end
     return sf
-end
-
-#Helper function to convert vector of vectors to matrix
-function vectorToMatrix(vector :: Vector{Vector{T}}) where T
-    ncol = length(vector[1])
-    nrow = length(vector)
-    return [vector[j][i] for i in 1:ncol, j in 1:nrow]
 end

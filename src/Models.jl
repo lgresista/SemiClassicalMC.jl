@@ -16,22 +16,24 @@ function initializeCfg(
     end
 end
 
+#Transform indices (μ,ν,κ,η) to (i, j) for σ^μ τ^
+
 ## Initialization of specific models
 ## General NN model for lattice with equivalent nn sites
 function initializeCfgNN(
-        J           :: Vector{Vector{Matrix{Float64}}},
+        J           :: Vector{Matrix{Float64}},
         latticename :: String,
         L           :: Int,
         n           :: Int
 )                   :: Configuration
 
         if length(J) == 1
-            onsiteInteraction = getZeroDiagInteraction()
-            interactions = [Interaction(J[1])]
+            onsiteInteraction = zeros(Float64, 16)
+            interactions = [J[1]]
         elseif length(J) == 2
             #onsite Interaction:
-            onsiteInteraction = DiagInteraction(J[1])
-            interactions = [Interaction(J[2])]
+            onsiteInteraction = diag(J[1])
+            interactions = [J[2]]
         else
             @error "Need length(J) = 1 (nn interactions) or length(J) = 2 (on-site and nearest-neighbor interactions)."
         end
@@ -52,49 +54,40 @@ function initializeCfgTgHbn(
     @assert length(J) == 5 "Need J = [J1, J2, Jp1, Jp2, JH]"
     J1, J2, Jp1, Jp2, JH = J/8 #Add 1/8 factor
 
-    #Define interaction matrices
-    onsiteInteraction = DiagInteraction([1.0, 1.0, 1.0], 
-                                        [0.0, 0.0, JH/2], 
-                                        [-JH/2, -JH/2, -JH/2],
-                                        [0.0, 0.0, JH/2]
-                                        )
+    ## Onsite interaction -J_H/16 * (1+σσ)(1-τᶻτᶻ) (without constant term)
+    onsiteInteraction = [ 
+          0.0, 0.0, 0.0, JH/2,                                     
+        -JH/2, 0.0, 0.0, JH/2,
+        -JH/2, 0.0, 0.0, JH/2,
+        -JH/2, 0.0, 0.0, JH/2 
+    ]
 
-    nn1Interaction = Interaction(
-    Matrix{Float64}(I, 3, 3) * 1.0,
+    ##Nearest neighbor interaction
+    #Spin coupling
+    Js_nn = Matrix{Float64}(I, 4, 4)
+    
+    #Valley coupling 1 (+DM interaction)
+    Jv_nn1 =  [ J1      0.0         0.0        0.0
+                0.0     J1 + Jp1    Jp2         0.0
+                0.0     -Jp2        J1 + Jp1    0.0
+                0.0     0.0         0.0         J1 ]
 
-    [J1 + Jp1 Jp2      0.0
-    -Jp2      J1 + Jp1 0.0
-    0.0      0.0      J1],
+    #Valley coupling 2 (-DM interaction)
+    Jv_nn2 =  [ J1      0.0         0.0        0.0
+                0.0     J1 + Jp1    -Jp2         0.0
+                0.0     Jp2        J1 + Jp1    0.0
+                0.0     0.0         0.0         J1 ]
 
-    Matrix{Float64}(I, 3, 3) * J1,
+    J_nn1 = kron(Js_nn, Jv_nn1)
+    J_nn1[1, 1] = 0.0                 #Remove constant energy (optional, depends on definition)
+    
+    J_nn2 = kron(Js_nn, Jv_nn2)
+    J_nn2[1, 1] = 0.0                 #Remove constant energy (optional, depends on definition)
 
-    [J1 + Jp1 Jp2      0.0
-    -Jp2      J1 + Jp1 0.0
-    0.0      0.0      J1]
-    )
+    ##Next-nearest neighbor (diagonal)
+    J_nnn = diagm([0.0; fill(J2, 15)])
 
-    nn2Interaction = Interaction(
-    Matrix{Float64}(I, 3, 3) * 1.0,
-
-    [J1+Jp1  -Jp2      0.0
-    +Jp2      J1+Jp1   0.0
-    0.0      0.0      J1],
-
-    Matrix{Float64}(I, 3, 3) * J1,
-
-    [J1 + Jp1 -Jp2      0.0
-    +Jp2      J1 + Jp1  0.0
-    0.0      0.0       J1]
-    )
-
-    nnnInteraction = Interaction(
-    Matrix{Float64}(I, 3, 3) * 1.0,
-    Matrix{Float64}(I, 3, 3) * J2,
-    Matrix{Float64}(I, 3, 3) * J2,
-    Matrix{Float64}(I, 3, 3) * J2,
-    )
-
-    interactions = [nn1Interaction, nn2Interaction, nnnInteraction]
+    interactions = [J_nn1, J_nn2, J_nnn]
 
     ## Initialize lattice with bonds
     uc = getUnitcell(:triangular, Int64, Int64)
