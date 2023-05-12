@@ -13,7 +13,7 @@ module SemiClassicalMC
         using Manifolds
         using FiniteDifferences
         using ManifoldDiff
-
+        using VectorizedRNG
 
         include("Generators.jl")
         export  getGenerators,

@@ -264,20 +264,18 @@ function getRandomState!(newState :: AbstractVector{Complex{Float64}}, state :: 
     return nothing
 end
 
-#= New version for StructArrays
-function getRandomState!(
+@inline function getRandomState!(
     newState :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
-    state :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
-    σ :: Float64) :: Nothing
-    @turbo for i in eachindex(newState)
-         newState.re[i] = state.re[i] + σ .* randn(Float64)
-         newState.im[i] = state.im[i] + σ .* randn(Float64)
-     end
-     #newState .= state .+ σ .* randn(Complex{Float64}, length(state))
-     normalize!(newState)
-     return nothing
+    state    :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
+    σ        :: Float64
+    )        :: Nothing
+
+    randn!(local_rng(), newState.re); @turbo newState.re .*= σ; @turbo newState.re .+= state.re
+    randn!(local_rng(), newState.im); @turbo newState.im .*= σ; @turbo newState.im .+= state.im
+    normalize!(newState)
+    
+    return nothing
 end
-=#
 
 function localUpdate!(cfg :: Configuration, E :: Float64, accepted_updates :: Int64, β :: Float64, i :: Int64, σ :: Float64) :: Tuple{Float64, Int64}
     
