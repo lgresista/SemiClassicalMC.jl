@@ -2,16 +2,17 @@ module SemiClassicalMC
         using Random
         using LinearAlgebra
         using LatticePhysics
-        using Statistics
+        using Statistics: mean
         using HDF5
         using Serialization
         using BinningAnalysis
         using LoopVectorization
+        using StaticArrays
+        using StructArrays
         using Manopt
         using Manifolds
         using FiniteDifferences
         using ManifoldDiff
-        using StaticArrays
 
 
         include("Generators.jl")

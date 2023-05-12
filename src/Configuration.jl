@@ -12,15 +12,15 @@ struct Configuration
     interactions        :: Vector{SMatrix{16, 16, Float64, 256}} # Stores different types of interactions (nn, nnn, bond depent)
     onsiteInteraction   :: SVector{16, Float64}             # Onsite interaction (only diagonal to stay Hermitian)
     d                   :: Int64                            # Dimension of local Hilbert space
-    generators          :: Vector{Matrix{Complex{Float64}}} # Basis of generators T of su(4) in matrix form (dxd matrices)
-    generatorsSq        :: Vector{Matrix{Complex{Float64}}} # Square of generators T² (for onsite interaction)
-    state               :: Vector{Vector{Complex{Float64}}} # state[:, i] contains local state at site i (complex vector of size d)
+    generators          :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}    # Basis of generators T of su(4) in matrix form (dxd matrices)
+    generatorsSq        :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}    # Square of generators T² (for onsite interaction)
+    state               :: Vector{StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}}  # state[:, i] contains local state at site i (complex vector of size d)
     spinExpectation     :: Vector{MVector{16, Float64}}     # spinExpectation[i] constaints <Ψᵢ|T|Ψᵢ> for current state
     spinSqExpectation   :: Vector{MVector{16, Float64}}     # spinSqExpectation[i] constaints <Ψᵢ|T²|Ψᵢ> for current state
     dT                  :: MVector{16, Float64}             # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
     newT                :: MVector{16, Float64}             # Buffer to hold <T_i_new>
     newTsq              :: MVector{16, Float64}             # Buffer to hold <T_i_new T_i_new>
-    newState            :: Vector{Complex{Float64}}         # Buffer to hold potential new local state
+    newState            :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}         # Buffer to hold potential new local state
 end
 
 #Initialization from unitcell generated with LatticePhysics
@@ -48,32 +48,36 @@ function Configuration(
     interactionLabels = [label.(bond) for bond in orgBonds]
 
     #Generators dependent on filling
-    generators = getGenerators(n)
-    generatorsSq = generators .^2
+    gen = getGenerators(n)
+    genSq = gen .^2
 
     #dimension of local Hilbertspace
-    d = length(generators[1][:, 1])
+    d = length(gen[1][:, 1]) 
+
+    #Convert to 3d StructArrays for vectorization of expectation values
+    generators = StructArray(gen[k][i, j] for i in 1:d, j in 1:d, k in eachindex(gen))
+    generatorsSq = StructArray(genSq[k][i, j] for i in 1:d, j in 1:d, k in eachindex(gen))
 
     #Generate random initial state
-    state = [getRandomState(d) for _ in 1:length(positions)]
+    state = [StructArray(getRandomState(d)) for _ in 1:length(positions)]
 
     #Calculate initial spin expectations 
     spinExpectation = [computeSpinExpectation(state[i], generators) for i in 1:nSites]
     spinSqExpectation = [computeSpinExpectation(state[i], generatorsSq) for i in 1:nSites]
     
     #Initialize buffers
-    dT = zeros(Float64, length(generators))
-    newT = zeros(Float64, length(generators))
-    newTsq = zeros(Float64, length(generators))
-    newState = zeros(Complex{Float64}, d)
-    
+    dT = zeros(Float64, size(generators, 3))
+    newT = zeros(Float64, size(generators, 3))
+    newTsq = zeros(Float64, size(generators, 3))
+    newState = StructArray(zeros(Complex{Float64}, d))
+        
     Configuration(latticename, L, nSites, unitVectors, basis, positions, basisLabels, interactionSites,
                   interactionLabels, interactions, onsiteInteraction, d, generators, generatorsSq, 
                   state, spinExpectation, spinSqExpectation, dT, newT, newTsq, newState)
 end
 
 ##Get functions (using views for slices of arrays)
-function Base.length(cfg :: Configuration) :: Int64
+@inline function Base.length(cfg :: Configuration) :: Int64
     return cfg.nSites
 end
 
@@ -101,15 +105,15 @@ end
     return cfg.onsiteInteraction
 end
 
-@inline function getGenerators(cfg :: Configuration) :: Vector{Matrix{Complex{Float64}}}
+@inline function getGenerators(cfg :: Configuration) :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
     return cfg.generators
 end
 
-@inline function getGeneratorsSq(cfg :: Configuration) :: Vector{Matrix{Complex{Float64}}}
+@inline function getGeneratorsSq(cfg :: Configuration) :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
     return cfg.generatorsSq
 end
 
-@inline function getState(cfg :: Configuration, i :: Int64) :: Vector{ComplexF64}
+@inline function getState(cfg :: Configuration, i :: Int64) :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}
     return cfg.state[i]
 end
 
@@ -130,24 +134,70 @@ end
 end
 
 #Compute spin expectation given a state and generators
-function computeSpinExpectation(state :: AbstractVector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Vector{Float64}
-    return [real(dot(state, generators[mu], state)) for mu in 1:length(generators)]
+function computeSpinExpectation(
+    state      :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64},
+    generators :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
+    )          :: Vector{Float64}
+   
+    state_re = state.re 
+    state_im = state.im 
+    g_re     = generators.re 
+    g_im     = generators.im
+    T        = zeros(Float64, size(generators, 3))
+   
+    @turbo for i in eachindex(T)
+        val = 0.0
+        for k in eachindex(state)
+            for j in eachindex(state)
+                val += state_re[j] * g_re[j, k, i] * state_re[k] -
+                                     state_re[j] * g_im[j, k, i] * state_im[k] +
+                                     state_im[j] * g_re[j, k, i] * state_im[k] +
+                                     state_im[j] * g_im[j, k, i] * state_re[k]
+
+            end
+        end
+        T[i] = val
+    end
+
+    return T
 end
 
 #Compute spin expectation in-place without allocations
-function computeSpinExpectation!(newT, state :: AbstractVector{Complex{Float64}}, generators :: Vector{Matrix{Complex{Float64}}}) :: Nothing
-    @inbounds for i in eachindex(newT)
-        newT[i] = real(dot(state, generators[i], state))
+function computeSpinExpectation!(
+    newT       :: AbstractVector{Float64},
+    state      :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64},
+    generators :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
+    )          :: Nothing
+
+    state_re = state.re 
+    state_im = state.im 
+    g_re     = generators.re 
+    g_im     = generators.im
+
+    @turbo for i in eachindex(newT)
+        val = 0.0
+        for k in eachindex(state)
+            for j in eachindex(state)
+                val += state_re[j] * g_re[j, k, i] * state_re[k] -
+                       state_re[j] * g_im[j, k, i] * state_im[k] +
+                       state_im[j] * g_re[j, k, i] * state_im[k] +
+                       state_im[j] * g_im[j, k, i] * state_re[k]
+            end
+        end
+        newT[i] = val
     end
+    
     return nothing
 end
+
+
 
 #Calculate exchange energy
 function exchangeEnergy(
     T_i :: AbstractVector,
-    M  :: AbstractMatrix,
+    M   :: AbstractMatrix,
     T_j :: AbstractVector
-    )  :: Float64
+    )   :: Float64
 
     val = 0.0
 

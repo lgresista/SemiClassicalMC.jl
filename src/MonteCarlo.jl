@@ -264,6 +264,21 @@ function getRandomState!(newState :: AbstractVector{Complex{Float64}}, state :: 
     return nothing
 end
 
+#= New version for StructArrays
+function getRandomState!(
+    newState :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
+    state :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
+    σ :: Float64) :: Nothing
+    @turbo for i in eachindex(newState)
+         newState.re[i] = state.re[i] + σ .* randn(Float64)
+         newState.im[i] = state.im[i] + σ .* randn(Float64)
+     end
+     #newState .= state .+ σ .* randn(Complex{Float64}, length(state))
+     normalize!(newState)
+     return nothing
+end
+=#
+
 function localUpdate!(cfg :: Configuration, E :: Float64, accepted_updates :: Int64, β :: Float64, i :: Int64, σ :: Float64) :: Tuple{Float64, Int64}
     
     #Generate new state (stored in cfg.newState)
@@ -295,7 +310,8 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
     M = Sphere(2*cfg.d-1)
 
     function F(M, realstate)
-        newState = realToComplex(realstate)
+        #newState = StructArray(realToComplex(realstate))
+        newState = StructVector{ComplexF64}(re = realstate[1:cfg.d], im = realstate[cfg.d+1:end])
         newT = computeSpinExpectation(newState, getGenerators(cfg))
         newTsq = computeSpinExpectation(newState, getGeneratorsSq(cfg))
         return getEnergyDifference(cfg, i, newT, newTsq)
@@ -311,7 +327,7 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
             M,
             F,
             gradF,
-            complexToReal(getState(cfg, i))
+            [getState(cfg, i).re; getState(cfg, i).im]
             ;
             stepsize=ArmijoLinesearch(initial_stepsize = 1.0, retraction_method = ExponentialRetraction(), contraction_factor = 0.99, sufficient_decrease = 0.5),
             stopping_criterion = (StopWhenAny(StopAfterIteration(200),StopWhenGradientNormLess(1e-3))),
@@ -324,17 +340,9 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
             #],
             )
     E += F(S, res)
-    newState = realToComplex(res)
+    newState = StructVector{ComplexF64}(re = res[1:cfg.d], im = res[cfg.d+1:end])
     cfg.state[i] .= newState
     cfg.spinExpectation[i] .= computeSpinExpectation(newState, getGenerators(cfg))
     cfg.spinSqExpectation[i] .= computeSpinExpectation(newState, getGeneratorsSq(cfg))
     return E
-end
-
-function realToComplex(vec)
-    return [vec[i] + im * vec[i+1] for i in 1:2:length(vec)]
-end
-
-function complexToReal(vec)
-   return vcat([[real(vec[i]), imag(vec[i])] for i in 1:length(vec)]...)
 end
