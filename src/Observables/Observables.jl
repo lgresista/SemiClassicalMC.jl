@@ -19,14 +19,21 @@ end
 
 
 #Calculate diagonal all-to-all correlations <T^\mu_i><T^\mu_j>, adding all contributions with the same r_i-r_j
-function getCorrelations(cfg :: Configuration, project :: Matrix{Int64})
-    Ts = getSpinExpectation(cfg)
+@inline function getCorrelations(cfg :: Configuration, project :: Matrix{Int64})
 
+    Ts           = getSpinExpectation(cfg)
     correlations = zeros(length(Ts[1]), length(getBasis(cfg)) * length(cfg))
 
-    for i in 1:length(cfg)
-        for j in 1:length(cfg)
-            correlations[:, project[i,j]] += Ts[i] .* Ts[j]
+    for i in 1 : length(cfg)
+        Ts_i = Ts[i] 
+
+        for j in 1 : length(cfg)
+            Ts_j = Ts[j]
+            idx  = project[i, j]
+            
+            @turbo for k in eachindex(Ts_i)
+                correlations[k, idx] += Ts_i[k] * Ts_j[k]
+            end
         end
     end
     

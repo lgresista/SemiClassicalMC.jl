@@ -163,7 +163,7 @@ function computeSpinExpectation(
 end
 
 #Compute spin expectation in-place without allocations
-function computeSpinExpectation!(
+@inline function computeSpinExpectation!(
     newT       :: AbstractVector{Float64},
     state      :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64},
     generators :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
@@ -173,17 +173,20 @@ function computeSpinExpectation!(
     state_im = state.im 
     g_re     = generators.re 
     g_im     = generators.im
-
+    
     @turbo for i in eachindex(newT)
         val = 0.0
+
         for k in eachindex(state)
+            state_re_k = state_re[k]
+            state_im_k = state_im[k]
+
             for j in eachindex(state)
-                val += state_re[j] * g_re[j, k, i] * state_re[k] -
-                       state_re[j] * g_im[j, k, i] * state_im[k] +
-                       state_im[j] * g_re[j, k, i] * state_im[k] +
-                       state_im[j] * g_im[j, k, i] * state_re[k]
+                val += (state_re[j] * g_re[j, k, i] + state_im[j] * g_im[j, k, i]) * state_re_k -
+                       (state_re[j] * g_im[j, k, i] - state_im[j] * g_re[j, k, i]) * state_im_k
             end
         end
+
         newT[i] = val
     end
     
@@ -193,7 +196,7 @@ end
 
 
 #Calculate exchange energy
-function exchangeEnergy(
+@inline function exchangeEnergy(
     T_i :: AbstractVector,
     M   :: AbstractMatrix,
     T_j :: AbstractVector
@@ -202,9 +205,13 @@ function exchangeEnergy(
     val = 0.0
 
     @turbo for k in eachindex(T_i) 
+        val_k = 0.0
+
         for l in eachindex(T_j)
-            val += T_i[k] * M[k, l] * T_j[l]
+            val_k += M[k, l] * T_j[l]
         end 
+
+        val += T_i[k] * val_k
     end 
 
     return val 
