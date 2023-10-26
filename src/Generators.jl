@@ -28,11 +28,11 @@ function get_su4index(μ :: Int, ν :: Int) :: Int
 end
 
 #Choosen bassis: Occupation of 
-# (up, +), (down, +), (up, -), (down, -)
+# (up, +), (up, -), (down, +), (down, -)
 
 #spin (s = 1 (up), 2 (down)) and valley(v = 1 (+), 2 (-)) to one index (j = (1, 2, 3, 4) corresponding to the basis above)
 function sl_to_j(s, l)
-    s + 2*l - 2
+    2s + l - 2
 end
 
 #Fermionic operator in matrix representation <a_i|(f_sl = f_j)|a_j> with |a> in basis
