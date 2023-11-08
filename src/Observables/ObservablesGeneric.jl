@@ -22,8 +22,8 @@ function ObservablesGeneric(cfg :: Configuration)
         LogBinner(Float64),
         LogBinner(Float64),
         LogBinner(Float64),
-        LogBinner(zeros(Float64, 16)),
-        LogBinner(zeros(Float64, 16, length(cfg.basis) * length(cfg))),
+        LogBinner(zeros(Float64, 15)),
+        LogBinner(zeros(Float64, 15, length(cfg.basis) * length(cfg))),
         rs, project
     )
 end
@@ -37,9 +37,9 @@ function measure!(
     push!(obs.energy, E/length(cfg), E^2 / length(cfg)^2)
     #Magnetizations 
     m = getMagnetization(cfg)
-    push!(obs.σ, norm(m[[5, 9, 13]]))
-    push!(obs.τ, norm(m[2:4]))
-    push!(obs.στ, norm(m[[6, 7, 8, 10, 11, 12, 14, 15, 16]]))
+    push!(obs.σ, norm(m[[4, 8, 12]]))
+    push!(obs.τ, norm(m[1:3]))
+    push!(obs.στ, norm(m[[5, 6, 7, 9, 10, 11, 13, 14, 15]]))
     push!(obs.magnetizationVec, m)
     push!(obs.correlations, getCorrelations(cfg, obs.project))
     return nothing

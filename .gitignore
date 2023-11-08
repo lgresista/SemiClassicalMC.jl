@@ -1,2 +1,4 @@
 /Manifest.toml
 *.ipynb_checkpoints
+*.h5
+*example.jl
