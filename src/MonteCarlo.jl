@@ -19,7 +19,7 @@ function run!(
     )                :: Nothing
 
     #Reseeding RNG
-    Random.seed!(seed)
+    VectorizedRNG.seed!(seed)
     
     #Initializing output
     println("$filename: Initializaing output ----"); flush(stdout)
@@ -134,7 +134,7 @@ function runAnnealing!(
     )                :: Nothing
     
     #Reseed RNG 
-    Random.seed!(seed)
+    VectorizedRNG.seed!(seed)
 
     E = getEnergy(cfg)
     
@@ -246,24 +246,14 @@ function runAnnealing!(
 end
 
 
-
 ## updates
 
 # Normalized complex vector of dimension d sampled uniformly 
 function getRandomState(d :: Int64) :: Vector{Complex{Float64}}
-    return normalize(randn(Complex{Float64}, d))
+    return normalize(randn(local_rng(), Complex{Float64}, d))
 end
 
-function getRandomState(state :: AbstractVector{Complex{Float64}}, σ :: Float64) :: Vector{Complex{Float64}}
-    return normalize(state .+ σ .* randn(Complex{Float64}, length(state)))
-end
-
-function getRandomState!(newState :: AbstractVector{Complex{Float64}}, state :: AbstractVector{Complex{Float64}}, σ :: Float64) :: Nothing
-    newState .= (state .+ σ .* randn(Complex{Float64}, length(state)))
-    normalize!(newState)
-    return nothing
-end
-
+# Normalized complex vector of dimension d sampled uniformly in-place and vectorized
 @inline function getRandomState!(
     newState :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
     state    :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}, 
@@ -277,6 +267,7 @@ end
     return nothing
 end
 
+#Local conical update (for cone size σ)
 function localUpdate!(cfg :: Configuration, E :: Float64, accepted_updates :: Int64, β :: Float64, i :: Int64, σ :: Float64) :: Tuple{Float64, Int64}
     
     #Generate new state (stored in cfg.newState)
