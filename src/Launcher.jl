@@ -11,6 +11,7 @@ function saveLauncher(
     T_i                 :: Number,              # Initial temperature for thermalization
     N_therm             :: Int,                 # Number of thermalization sweeps
     N_measure           :: Int;                 # Number of measurement sweeps
+    B                   :: Vector{Float64} = zeros(Float64, 15), # constant magnetic field
     measurement_rate    :: Int = 10,            # Frequency of measurements (in sweeps)
     checkpoint_rate     :: Int = 100000,        # Frequency of checkpoints
     report_rate         :: Int = 100000,        # Frequency of printing progress
@@ -33,6 +34,7 @@ function saveLauncher(
                         $T_i,
                         $N_therm,
                         $N_measure;
+                        B = $B,
                         measurement_rate = $measurement_rate, 
                         checkpoint_rate = $checkpoint_rate, 
                         report_rate = $report_rate,
@@ -58,6 +60,7 @@ function launch!(
     T_i              :: Number,              # Initial temperature for thermalization
     N_therm          :: Int,                 # Number of thermalization sweeps
     N_measure        :: Int;                 # Number of measurement sweeps
+    B                :: Vector{Float64} = zeros(Float64, 15), # constant magnetic field
     measurement_rate :: Int = 10,            # Frequency of measurements (in sweeps)
     checkpoint_rate  :: Int = 100000,        # Frequency of checkpoints
     report_rate      :: Int = 100000,        # Frequency of printing progress
@@ -72,7 +75,7 @@ function launch!(
     if overwrite == true
         #Start from scratch
         println("$filename: Overwrite = true, starting from scratch.")
-        cfg = initializeCfg(model, latticename, J, L, n)
+        cfg = initializeCfg(model, latticename, J, L, n; B = B)
         obs = initializeObservables(obstype, cfg)
         run!(cfg, obs, T, T_i, N_therm, N_measure, filename; measurement_rate = measurement_rate, checkpoint_rate = checkpoint_rate, report_rate = report_rate);
     else
@@ -98,6 +101,7 @@ function saveLauncherAnnealing(
     L                :: Int,             # Linear lattice size
     J                :: AbstractVector,  # Couplings given in format required by the specific model
     T_i              :: Number;          # Initial temperature
+    B                :: Vector{Float64} = zeros(Float64, 15),     # constant magnetic field
     T_fac            :: Number = 0.98,   # Factor by which the temperature gets lowered
     N_max            :: Int = 10000000,  # Maximal number of sweeps before stopping simmulated annealing
     N_o              :: Int = 10,        # Number of optimization sweeps
@@ -121,6 +125,7 @@ function saveLauncherAnnealing(
                         $L,            
                         $J,
                         $T_i;
+                        B = $B,
                         T_fac = $T_fac,  
                         N_max = $N_max,             
                         N_o = $N_o,               
@@ -147,6 +152,7 @@ function launchAnnealing!(
     L                :: Int,            # Linear lattice size
     J                :: AbstractVector, # Couplings given in format required by the specific model
     T_i              :: Number;         # Initial temperature
+    B                :: Vector{Float64} = zeros(Float64, 15), # constant magnetic field
     T_fac            :: Number = 0.98,  # Factor by which the temperature gets lowered
     N_max            :: Int = 10000,    # Maximal number of sweeps before stopping simmulated annealing
     N_o              :: Int = 0,        # Number of optimization sweeps
@@ -163,7 +169,8 @@ function launchAnnealing!(
     Random.seed!(seed)
     VectorizedRNG.seed!(seed)
 
-    cfg = initializeCfg(model, latticename, J, L, n)
+    #Run calculation
+    cfg = initializeCfg(model, latticename, J, L, n; B = B)
     runAnnealing!(cfg,
                 T_i,
                 filename; 

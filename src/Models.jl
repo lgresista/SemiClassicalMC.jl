@@ -4,13 +4,14 @@ function initializeCfg(
         latticename :: String,
         J           :: AbstractVector,
         L           :: Int,
-        n           :: Int
+        n           :: Int;
+        B           :: Vector{Float64} = zeros(Float64, 15)
         )           :: Configuration
         
     if model == "nearest-neighbor"
-        initializeCfgNN(J, latticename, L, n)
+        initializeCfgNN(J, latticename, L, n; B = B)
     elseif model == "tg-hbn"
-        initializeCfgTgHbn(J, L; n = n)
+        initializeCfgTgHbn(J, L; n = n, B = B)
     else
         @error "model $model not implemented"
     end
@@ -24,11 +25,12 @@ function initializeCfgNN(
         J           :: Vector{Matrix{Float64}},
         latticename :: String,
         L           :: Int,
-        n           :: Int
+        n           :: Int;
+        B           :: Vector{Float64} = zeros(Float64, 15),
 )                   :: Configuration
 
         if length(J) == 1
-            onsiteInteraction = zeros(Float64, 16)
+            onsiteInteraction = zeros(Float64, 15)
             interactions = [J[1]]
         elseif length(J) == 2
             #onsite Interaction:
@@ -41,26 +43,22 @@ function initializeCfgNN(
         # Initialize lattice with bonds (nn bonds are automatically added)
         uc = getUnitcell(Symbol(latticename), Int64, Int64)
 
-        return Configuration(latticename, L, uc, interactions, onsiteInteraction, n)
+        return Configuration(latticename, L, uc, interactions, n; onsiteInteraction = onsiteInteraction, B = B)
 end
 
 ## TG/h-BN as defined in https://doi.org/10.1103/PhysRevB.99.205150
 function initializeCfgTgHbn(
-    J     :: Vector{<:Number},
-    L     :: Int;
-    n = 2 :: Int64,
+    J :: Vector{<:Number},
+    L :: Int;
+    n :: Int64 = 2,
+    B :: Vector{Float64} = zeros(Float64, 15)     
     )    :: Configuration
 
     @assert length(J) == 5 "Need J = [J1, J2, Jp1, Jp2, JH]"
     J1, J2, Jp1, Jp2, JH = J/8 #Add 1/8 factor
 
     ## Onsite interaction -J_H/16 * (1+σσ)(1-τᶻτᶻ) (without constant term)
-    onsiteInteraction = [ 
-          0.0, 0.0, 0.0, JH/2,                                     
-        -JH/2, 0.0, 0.0, JH/2,
-        -JH/2, 0.0, 0.0, JH/2,
-        -JH/2, 0.0, 0.0, JH/2 
-    ]
+    onsiteInteraction = [0.0, 0.0, JH/2, -JH/2, 0.0, 0.0, JH/2, -JH/2, 0.0, 0.0, JH/2, -JH/2, 0.0, 0.0, JH/2]
 
     ##Nearest neighbor interaction
     #Spin coupling
@@ -78,14 +76,11 @@ function initializeCfgTgHbn(
                 0.0     Jp2        J1 + Jp1    0.0
                 0.0     0.0         0.0         J1 ]
 
-    J_nn1 = kron(Js_nn, Jv_nn1)
-    J_nn1[1, 1] = 0.0                 #Remove constant energy (optional, depends on definition)
-    
-    J_nn2 = kron(Js_nn, Jv_nn2)
-    J_nn2[1, 1] = 0.0                 #Remove constant energy (optional, depends on definition)
+    J_nn1 = kron(Js_nn, Jv_nn1)[2:end, 2:end] #remove density terms
+    J_nn2 = kron(Js_nn, Jv_nn2)[2:end, 2:end] #remove density terms
 
     ##Next-nearest neighbor (diagonal)
-    J_nnn = diagm([0.0; fill(J2, 15)])
+    J_nnn = diagm(fill(J2, 15))
 
     interactions = [J_nn1, J_nn2, J_nnn]
 
@@ -109,5 +104,5 @@ function initializeCfgTgHbn(
     addBond!(uc, 1, 1, 3, (-1, 2), true)
     addBond!(uc, 1, 1, 3, (-2, 1), true)
 
-    return Configuration("triangular", L, uc, interactions, onsiteInteraction, n)
+    return Configuration("triangular", L, uc, interactions, n; onsiteInteraction = onsiteInteraction, B = B)
 end

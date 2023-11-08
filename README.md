@@ -1,7 +1,11 @@
 # SemiClassicalMC
 This package allows the semi-classical analysis of $\mathfrak{su}(4)$ spin models using Metropolis Monte Carlo and simulated annealing algorithms. It can treat models with Hamiltonians of the form
 
-$$H = \sum_{ij} \sum_{\mu,\nu,\kappa,\lambda = 0}^3(\sigma_i^\mu \otimes \tau_i^\kappa)\ J_{ij}^{\mu\nu\kappa\lambda} (\sigma_j^\nu \otimes \tau_j^\lambda) \equiv  \sum_{ij} \sum_{a, b = 0}^{15} T^a_i\ J_{ij}^{ab}\ T^b_j.$$
+$$H = 
+\sum_{ij} \sum_{a, b = 1}^{15} T^a_i\ J_{ij}^{ab}\ T^b_j + \sum_{i}\sum_{a = 1}^{15} B^{a}T_i^a 
+\equiv  
+\sum_{ij} \sum_{\mu,\nu,\kappa,\lambda = 0}^3(\sigma_i^\mu \otimes \tau_i^\kappa)\ J_{ij}^{\mu\nu\kappa\lambda} (\sigma_j^\nu \otimes \tau_j^\lambda) + \sum_{i}\sum_{\mu,\kappa = 0}^3 B^{\mu\kappa} (\sigma_i^\mu \otimes \tau_i^\kappa)
+$$
 
 The spin-valley operators $T^a \equiv \sigma_i^\mu \otimes \tau_i^\kappa$ are generators of the Lie-Group SU(4) and defined via a fermionic parton decomposition as
 

@@ -9,18 +9,19 @@ struct Configuration
     basisLabels         :: Vector{Int64}                    # basis sublattice label of each site
     interactionSites    :: Vector{Vector{Int64}}            # interactionSites[i] is a vector containing the indices of each site that interacts with site i
     interactionLabels   :: Vector{Vector{Int64}}            # interactionLabels[i] is a vector containing the index of the type of interaction (in interactions)
-    interactions        :: Vector{SMatrix{16, 16, Float64, 256}} # Stores different types of interactions (nn, nnn, bond depent)
-    onsiteInteraction   :: SVector{16, Float64}             # Onsite interaction (only diagonal to stay Hermitian)
+    interactions        :: Vector{SMatrix{15, 15, Float64, 225}} # Stores different types of interactions (nn, nnn, bond depent)
+    onsiteInteraction   :: SVector{15, Float64}             # Onsite interaction (only diagonal to stay Hermitian)
+    B                   :: SVector{15, Float64}             # constant magnetic field coupling to all generators
     d                   :: Int64                            # Dimension of local Hilbert space
     generators          :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}    # Basis of generators T of su(4) in matrix form (dxd matrices)
     generatorsSq        :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}    # Square of generators T² (for onsite interaction)
     state               :: Vector{StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}}  # state[:, i] contains local state at site i (complex vector of size d)
-    spinExpectation     :: Vector{MVector{16, Float64}}     # spinExpectation[i] constaints <Ψᵢ|T|Ψᵢ> for current state
-    spinSqExpectation   :: Vector{MVector{16, Float64}}     # spinSqExpectation[i] constaints <Ψᵢ|T²|Ψᵢ> for current state
-    dT                  :: MVector{16, Float64}             # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
-    newT                :: MVector{16, Float64}             # Buffer to hold <T_i_new>
-    newTsq              :: MVector{16, Float64}             # Buffer to hold <T_i_new T_i_new>
-    newState            :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64}         # Buffer to hold potential new local state
+    spinExpectation     :: Vector{MVector{15, Float64}}     # spinExpectation[i] constaints <Ψᵢ|T|Ψᵢ> for current state
+    spinSqExpectation   :: Vector{MVector{15, Float64}}     # spinSqExpectation[i] constaints <Ψᵢ|T²|Ψᵢ> for current state
+    dT                  :: MVector{15, Float64}             # Buffer to hold dT = <T_i_new> - <T_i_old> in local update
+    newT                :: MVector{15, Float64}             # Buffer to hold <T_i_new>
+    newTsq              :: MVector{15, Float64}             # Buffer to hold <T_i_new T_i_new>
+    newState            :: StructVector{ComplexF64, NamedTuple{(:re, :im), Tuple{Vector{Float64}, Vector{Float64}}}, Int64} # Buffer to hold potential new local state
 end
 
 #Initialization from unitcell generated with LatticePhysics
@@ -28,9 +29,10 @@ function Configuration(
     latticename          :: String,                    #Lattice name
     L                    :: Int64,                     #Linear lattice size
     uc                   :: Unitcell{Site{Int64, D}, Bond{Int64, D}} where D, #Unitcell generated with LatticePhysics
-    interactions         :: Vector{Matrix{Float64}},       #Vector containing different interactions associated to bond labels in uc
-    onsiteInteraction    :: Vector{Float64},      #Onsite interactions
-    n                    :: Int64                      #Partons per site (n = 1 -> fundamental or n = 2 -> self-conjugate representation);
+    interactions         :: Vector{Matrix{Float64}},   #Vector containing different interactions associated to bond labels in uc
+    n                    :: Int64;                      #Partons per site (n = 1 -> fundamental or n = 2 -> self-conjugate representation);
+    onsiteInteraction    :: Vector{Float64} = zeros(Float64, 15),           # onsite interactions
+    B                    :: Vector{Float64} = zeros(Float64, 15),           # constant magnetic field
     )                    :: Configuration
 
     #Generate lattice
@@ -72,7 +74,7 @@ function Configuration(
     newState = StructArray(zeros(Complex{Float64}, d))
         
     Configuration(latticename, L, nSites, unitVectors, basis, positions, basisLabels, interactionSites,
-                  interactionLabels, interactions, onsiteInteraction, d, generators, generatorsSq, 
+                  interactionLabels, interactions, onsiteInteraction, B, d, generators, generatorsSq, 
                   state, spinExpectation, spinSqExpectation, dT, newT, newTsq, newState)
 end
 
@@ -97,12 +99,16 @@ end
     return cfg.interactionLabels[i]
 end
 
-@inline function getInteraction(cfg :: Configuration, label :: Int) :: SMatrix{16, 16, Float64, 256}
+@inline function getInteraction(cfg :: Configuration, label :: Int) :: SMatrix{15, 15, Float64, 225}
     return cfg.interactions[label]
 end
 
-@inline function getOnsiteInteraction(cfg :: Configuration) :: SVector{16, Float64}
+@inline function getOnsiteInteraction(cfg :: Configuration) :: SVector{15, Float64}
     return cfg.onsiteInteraction
+end
+
+@inline function getB(cfg :: Configuration) :: SVector{15, Float64}
+    return cfg.B
 end
 
 @inline function getGenerators(cfg :: Configuration) :: StructArray{ComplexF64, 3, NamedTuple{(:re, :im), Tuple{Array{Float64, 3}, Array{Float64, 3}}}, Int64}
@@ -117,19 +123,19 @@ end
     return cfg.state[i]
 end
 
-@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: MVector{16, Float64}
+@inline function getSpinExpectation(cfg :: Configuration, i :: Int64) :: MVector{15, Float64}
     return cfg.spinExpectation[i]
 end
 
-@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: MVector{16, Float64}
+@inline function getSpinSqExpectation(cfg :: Configuration, i :: Int64) :: MVector{15, Float64}
     return cfg.spinSqExpectation[i]
 end
 
-@inline function getSpinExpectation(cfg :: Configuration) :: Vector{MVector{16, Float64}} 
+@inline function getSpinExpectation(cfg :: Configuration) :: Vector{MVector{15, Float64}} 
     return cfg.spinExpectation
 end
 
-@inline function getSpinSqExpectation(cfg :: Configuration) :: Vector{MVector{16, Float64}} 
+@inline function getSpinSqExpectation(cfg :: Configuration) :: Vector{MVector{15, Float64}} 
     return cfg.spinSqExpectation
 end
 
@@ -217,16 +223,16 @@ end
     return val 
 end
 
-#Calculate onsite energy
-function onsiteEnergy(
-    Tsq :: AbstractVector,
-    M   :: AbstractVector
+#Calculate linear energy (for onsite and magnetic field terms)
+function linearEnergy(
+    T_i :: AbstractVector,
+    B   :: AbstractVector
     )   :: Float64
 
     val = 0.0
 
-    @turbo for k in eachindex(Tsq)
-        val += Tsq[k] * M[k]
+    @turbo for k in eachindex(T_i)
+        val += T_i[k] * B[k]
     end
 
     return val
@@ -236,13 +242,19 @@ end
 function getEnergy(cfg :: Configuration) :: Float64
     E = 0.0
     for i in 1:length(cfg)
-        Tsq = getSpinSqExpectation(cfg, i)
-        E += onsiteEnergy(Tsq, getOnsiteInteraction(cfg))
 
+        #Onsite energy
+        Tsq = getSpinSqExpectation(cfg, i)
+        E += linearEnergy(Tsq, getOnsiteInteraction(cfg))
+
+        #Magnetic field energy
+        T_i = getSpinExpectation(cfg, i)
+        E += linearEnergy(T_i, getB(cfg))
+
+        #Exchange energy (divide by 2 to avoid overcounting)
         interactionSites  = getInteractionSites(cfg, i)
         interactionLabels = getInteractionLabels(cfg, i)
         
-        T_i = getSpinExpectation(cfg, i)
         for j in eachindex(interactionSites)
             T_j = getSpinExpectation(cfg, interactionSites[j])
             M = getInteraction(cfg, interactionLabels[j])
@@ -252,40 +264,21 @@ function getEnergy(cfg :: Configuration) :: Float64
     return E
 end
 
-#Get energy difference for new spin expectation newT, and newTSq
-function getEnergyDifference(cfg :: Configuration, i :: Int64, newT :: Vector{Float64}, newTsq :: Vector{Float64}) :: Float64
-    dE = 0.0
-    #Onsite Interaction
-    Tsq = getSpinSqExpectation(cfg, i)
-    dE += onsiteEnergy(newTsq, getOnsiteInteraction(cfg)) - 
-          onsiteEnergy(Tsq, getOnsiteInteraction(cfg))
-
-    #Exchange Interaction
-    T = getSpinExpectation(cfg, i)
-    interactionSites  = getInteractionSites(cfg, i)
-    interactionLabels = getInteractionLabels(cfg, i)
-    @turbo cfg.dT .= newT .- T
-
-    for j in eachindex(interactionSites)
-        T_j = getSpinExpectation(cfg, interactionSites[j])
-        M = getInteraction(cfg, interactionLabels[j])
-        dE += exchangeEnergy(cfg.dT, M, T_j)
-    end
-    return dE
-end
-
 #Get energy difference for new spin expectation newT, and newTSq, in-place
 function getEnergyDifference!(cfg :: Configuration, i :: Int64) :: Float64
     dE = 0.0
+    
     #Onsite Interaction
     Tsq = getSpinSqExpectation(cfg, i)
-    dE += onsiteEnergy(cfg.newTsq, getOnsiteInteraction(cfg)) - 
-          onsiteEnergy(Tsq, getOnsiteInteraction(cfg))
+    dE += linearEnergy(cfg.newTsq, getOnsiteInteraction(cfg)) - 
+          linearEnergy(Tsq, getOnsiteInteraction(cfg))
 
-    #Exchange Interaction
+    #Magnetic field
     T = getSpinExpectation(cfg, i)
     @turbo cfg.dT .= cfg.newT .- T
+    dE += linearEnergy(cfg.dT, getB(cfg))
 
+    #Exchange Interaction
     interactionSites  = getInteractionSites(cfg, i)
     interactionLabels = getInteractionLabels(cfg, i)
 

@@ -29,6 +29,7 @@ module SemiClassicalMC
                 getInteractionLabels,
                 getInteraction,
                 getOnsiteInteraction,
+                getB,
                 getGenerators,
                 getGeneratorsSq,
                 getState,

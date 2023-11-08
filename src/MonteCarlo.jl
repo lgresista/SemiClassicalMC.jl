@@ -292,10 +292,10 @@ function localOptimization!(cfg :: Configuration, E :: Float64, i :: Int64) :: F
 
     function F(M, realstate)
         #newState = StructArray(realToComplex(realstate))
-        newState = StructVector{ComplexF64}(re = realstate[1:cfg.d], im = realstate[cfg.d+1:end])
-        newT = computeSpinExpectation(newState, getGenerators(cfg))
-        newTsq = computeSpinExpectation(newState, getGeneratorsSq(cfg))
-        return getEnergyDifference(cfg, i, newT, newTsq)
+        cfg.newState .= StructVector{ComplexF64}(re = realstate[1:cfg.d], im = realstate[cfg.d+1:end])
+        cfg.newT .= computeSpinExpectation(cfg.newState, getGenerators(cfg))
+        cfg.newTsq .= computeSpinExpectation(cfg.newState, getGeneratorsSq(cfg))
+        return getEnergyDifference!(cfg, i)
     end
 
     F(realstate) = F(M, realstate)
