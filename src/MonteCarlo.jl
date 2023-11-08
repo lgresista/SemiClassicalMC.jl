@@ -15,12 +15,8 @@ function run!(
     energy           :: Vector{Float64} = Float64[],
     βs               :: Vector{Float64} = Float64[],
     σ                :: Float64 = 60.0,
-    seed             :: Int = abs(rand(Random.RandomDevice(),Int)),
     )                :: Nothing
 
-    #Reseeding RNG
-    VectorizedRNG.seed!(seed)
-    
     #Initializing output
     println("$filename: Initializaing output ----"); flush(stdout)
 
@@ -125,16 +121,12 @@ function runAnnealing!(
     min_accrate      :: Number = 1e-5,
     checkpoint_rate  :: Int = 100000,
     σ_min            :: Float64 = 0.05,
-    seed             :: Int = abs(rand(Random.RandomDevice(),Int)),
     verbose          :: Bool = false,
     βs               :: Vector{Float64} = Float64[],
     energy           :: Vector{Float64} = Float64[],
     current_sweep    :: Int64 = 1,
     σ                :: Float64 = 60.0
     )                :: Nothing
-    
-    #Reseed RNG 
-    VectorizedRNG.seed!(seed)
 
     E = getEnergy(cfg)
     

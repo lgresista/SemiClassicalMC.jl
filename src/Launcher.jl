@@ -14,6 +14,7 @@ function saveLauncher(
     measurement_rate    :: Int = 10,            # Frequency of measurements (in sweeps)
     checkpoint_rate     :: Int = 100000,        # Frequency of checkpoints
     report_rate         :: Int = 100000,        # Frequency of printing progress
+    seed             :: Int = abs(rand(Random.RandomDevice(),Int)), #seed for RNG
     overwrite           :: Bool = true          # Overwrite = false tries to load data from checkpoint
     )                   :: Nothing
 
@@ -35,6 +36,7 @@ function saveLauncher(
                         measurement_rate = $measurement_rate, 
                         checkpoint_rate = $checkpoint_rate, 
                         report_rate = $report_rate,
+                        seed = $seed,
                         overwrite = $overwrite
                     )
                     """
@@ -59,8 +61,13 @@ function launch!(
     measurement_rate :: Int = 10,            # Frequency of measurements (in sweeps)
     checkpoint_rate  :: Int = 100000,        # Frequency of checkpoints
     report_rate      :: Int = 100000,        # Frequency of printing progress
+    seed             :: Int = abs(rand(Random.RandomDevice(),Int)), #seed for RNG
     overwrite        :: Bool = true,         # Overwrite = false tries to load data from checkpoint
     )                :: Nothing
+
+    #Reseed RNGs
+    Random.seed!(seed)
+    VectorizedRNG.seed!(seed)
 
     if overwrite == true
         #Start from scratch
@@ -152,6 +159,10 @@ function launchAnnealing!(
     verbose          :: Bool = false    #More output in optimization sweeps
     )                :: Nothing
 
+    #Reseed RNGs
+    Random.seed!(seed)
+    VectorizedRNG.seed!(seed)
+
     cfg = initializeCfg(model, latticename, J, L, n)
     runAnnealing!(cfg,
                 T_i,
@@ -164,7 +175,6 @@ function launchAnnealing!(
                 min_accrate = min_accrate,
                 checkpoint_rate = checkpoint_rate,
                 σ_min = σ_min,
-                seed = seed,
                 verbose = verbose,
                 )
  
